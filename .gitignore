@@ -7,3 +7,15 @@ __pycache__/
 # Credentials and Secrets
 .env
 honeypot_config.json
+
+# SSL certificates (if stored in repo directory)
+*.crt
+*.key
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
