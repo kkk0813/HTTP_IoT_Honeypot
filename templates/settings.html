@@ -1,0 +1,837 @@
+{% extends "base.html" %}
+
+{% block title %}Settings | IoT Honeypot{% endblock %}
+
+{% block content %}
+<div class="flex-1 p-8 overflow-y-auto">
+    <header class="mb-8">
+        <h2 class="text-2xl font-bold text-gray-900">System Configuration</h2>
+        <p class="text-gray-500 text-sm">Manage deployment modes, security settings, and honeypot behavior.</p>
+    </header>
+
+    <!-- ================================================================ -->
+    <!-- DEPLOYMENT MODE                                                    -->
+    <!-- ================================================================ -->
+    <div class="bg-white rounded-xl border shadow-sm p-6 mb-6">
+        <div class="flex items-center justify-between mb-6">
+            <div>
+                <h3 class="font-bold text-lg">Deployment Mode</h3>
+                <p class="text-sm text-gray-500">Switch between safe simulation and live internet exposure</p>
+            </div>
+            <div id="current-mode-badge" class="px-4 py-2 bg-blue-100 text-blue-900 rounded-lg font-bold text-sm">
+                🔒 SIMULATION MODE
+            </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 mb-6">
+            <div id="mode-simulation" class="border-2 border-blue-500 bg-blue-50 rounded-lg p-5 cursor-pointer hover:shadow-md transition-all" onclick="selectMode('simulation')">
+                <div class="flex items-center gap-3 mb-3">
+                    <span class="text-2xl">🎮</span>
+                    <div>
+                        <h4 class="font-bold text-blue-900">Simulation Mode</h4>
+                        <span class="text-xs text-blue-700">Recommended for Education</span>
+                    </div>
+                </div>
+                <ul class="text-xs text-gray-700 space-y-1">
+                    <li>✓ Interactive attack lab with guided tutorials</li>
+                    <li>✓ Hands-on learning experience</li>
+                    <li>✓ Safe for classroom environments</li>
+                    <li>✓ No external network exposure</li>
+                </ul>
+            </div>
+
+            <div id="mode-internet" class="border-2 border-gray-200 bg-white rounded-lg p-5 cursor-pointer hover:shadow-md transition-all" onclick="selectMode('internet')">
+                <div class="flex items-center gap-3 mb-3">
+                    <span class="text-2xl">🌐</span>
+                    <div>
+                        <h4 class="font-bold text-gray-900">Internet Mode</h4>
+                        <span class="text-xs text-red-600">⚠️ Advanced Use Only</span>
+                    </div>
+                </div>
+                <ul class="text-xs text-gray-700 space-y-1">
+                    <li>✓ Captures real-world attacks</li>
+                    <li>✓ Exposed to public internet</li>
+                    <li>✓ AbuseIPDB reputation lookups</li>
+                    <li>✓ Rate limiting active</li>
+                </ul>
+            </div>
+        </div>
+
+        <div id="internet-warning" class="hidden p-4 bg-red-50 border-2 border-red-200 rounded-lg">
+            <div class="flex items-start gap-3">
+                <span class="text-2xl">⚠️</span>
+                <div class="flex-1">
+                    <h4 class="font-bold text-red-900 mb-1">Security Warning</h4>
+                    <p class="text-sm text-red-800 mb-3">Internet mode will expose this honeypot to real attackers on the public internet. Ensure:</p>
+                    <ul class="text-xs text-red-700 space-y-1 ml-4">
+                        <li>• System is properly isolated from production networks</li>
+                        <li>• Firewall rules restrict access to management interfaces</li>
+                        <li>• You have authorization to expose this system</li>
+                        <li>• Monitoring and alerting are configured</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- DEVICE PERSONA                                                     -->
+    <!-- ================================================================ -->
+    <div class="bg-white rounded-xl border shadow-sm p-6 mb-6">
+        <div class="mb-4">
+            <h3 class="font-bold text-lg">Device Persona</h3>
+            <p class="text-sm text-gray-500">The honeypot impersonates this device. HTTP <code class="bg-gray-100 px-1 rounded">Server</code> headers and login page update accordingly.</p>
+        </div>
+
+        <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">📡 Routers</p>
+        <div class="grid grid-cols-5 gap-3 mb-4" id="persona-cards-router">
+            <!-- router cards injected by JS -->
+        </div>
+
+        <p class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">📹 IP Cameras</p>
+        <div class="grid grid-cols-5 gap-3" id="persona-cards-camera">
+            <!-- camera cards injected by JS -->
+        </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- NETWORK CONFIGURATION                                              -->
+    <!-- ================================================================ -->
+    <div class="bg-white rounded-xl border shadow-sm p-6 mb-6">
+        <h3 class="font-bold text-lg mb-4">Network Configuration</h3>
+        
+        <div class="grid grid-cols-2 gap-6">
+            <div>
+                <label class="block text-sm font-bold text-gray-700 mb-2">Listening Port</label>
+                <input id="bind-port" type="number" value="80" class="w-full px-3 py-2 border rounded text-sm font-mono">
+                <p class="text-xs text-gray-500 mt-1">Default: 80 (HTTP). Requires restart to apply.</p>
+            </div>
+            <div>
+                <label class="block text-sm font-bold text-gray-700 mb-2">Current Binding</label>
+                <div id="current-bind" class="px-3 py-2 bg-gray-50 border rounded text-sm font-mono text-gray-900">
+                    Loading…
+                </div>
+                <p class="text-xs text-gray-500 mt-1">Automatically set based on deployment mode.</p>
+            </div>
+        </div>
+
+        <div class="mt-4 p-3 bg-blue-50 rounded border border-blue-200 text-xs">
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <strong class="text-blue-900">Local IP:</strong> 
+                    <span id="local-ip" class="font-mono text-blue-700">Loading…</span>
+                </div>
+                <div>
+                    <strong class="text-blue-900">Public IP:</strong> 
+                    <span id="public-ip" class="font-mono text-blue-700">Loading…</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- SECURITY & RATE LIMITING                                           -->
+    <!-- ================================================================ -->
+    <div class="bg-white rounded-xl border shadow-sm p-6 mb-6">
+        <h3 class="font-bold text-lg mb-4">Security & Rate Limiting</h3>
+        
+        <div class="space-y-4">
+            <div class="flex items-center justify-between p-3 bg-gray-50 rounded">
+                <div>
+                    <h4 class="text-sm font-bold">Rate Limiting</h4>
+                    <p class="text-xs text-gray-600">Prevent DoS attacks on honeypot (active in Internet mode only)</p>
+                </div>
+                <label class="relative inline-block w-12 h-6">
+                    <input type="checkbox" id="rate-limit-toggle" checked class="sr-only peer">
+                    <div class="w-full h-full bg-gray-300 rounded-full peer peer-checked:bg-green-500 transition-all"></div>
+                    <div class="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:translate-x-6"></div>
+                </label>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 mb-1">Max Requests per IP (per hour)</label>
+                    <input id="max-requests" type="number" value="100" class="w-full px-3 py-2 border rounded text-sm">
+                </div>
+                <div>
+                    <label class="block text-xs font-bold text-gray-700 mb-1">Auto-Block Threshold (abuse score)</label>
+                    <input id="block-threshold" type="number" value="90" class="w-full px-3 py-2 border rounded text-sm">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- ABUSEIPDB API KEY                                                  -->
+    <!-- ================================================================ -->
+    <div class="bg-white rounded-xl border shadow-sm p-6 mb-6">
+        <div class="mb-4">
+            <h3 class="font-bold text-lg">AbuseIPDB Integration</h3>
+            <p class="text-sm text-gray-500">Used to enrich IP addresses with real-world abuse reputation scores.</p>
+        </div>
+
+        <!-- Registration link -->
+        <div class="mb-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg flex items-start gap-3">
+            <span class="text-indigo-500 text-lg">💡</span>
+            <div class="text-xs text-indigo-800">
+                Don't have an API key? It's free.
+                <a href="https://www.abuseipdb.com/register" target="_blank" rel="noopener noreferrer"
+                   class="font-bold text-indigo-600 hover:underline ml-1">
+                    Register at AbuseIPDB →
+                </a>
+                Then go to <em>Keys</em> in your dashboard to create one.
+            </div>
+        </div>
+
+        <!-- Key input row -->
+        <div class="flex gap-3 items-end">
+            <div class="flex-1">
+                <label class="block text-xs font-bold text-gray-700 mb-1">API Key</label>
+                <div class="relative">
+                    <input id="api-key-input" type="password" placeholder="Paste your AbuseIPDB key here…"
+                           class="w-full px-3 py-2 border rounded text-sm font-mono pr-10 focus:outline-none focus:ring-2 focus:ring-indigo-300">
+                    <button type="button" onclick="toggleKeyVisibility()" id="key-eye-btn"
+                            class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+                        👁️
+                    </button>
+                </div>
+            </div>
+            <button onclick="validateKey()" id="validate-btn"
+                    class="px-4 py-2 bg-indigo-100 text-indigo-700 font-bold text-xs rounded hover:bg-indigo-200 transition-all whitespace-nowrap">
+                🔍 Validate Key
+            </button>
+        </div>
+
+        <!-- Validation feedback -->
+        <div id="key-status" class="hidden mt-3 text-xs font-medium"></div>
+
+        <!-- Saved-state badge -->
+        <div class="mt-3">
+            <span id="key-state-badge" class="inline-block px-2 py-0.5 rounded text-xs font-bold bg-gray-200 text-gray-600">
+                No key saved
+            </span>
+        </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- EMAIL NOTIFICATIONS (FR-10)                                       -->
+    <!-- ================================================================ -->
+    <div class="bg-white rounded-xl border shadow-sm p-6 mb-6">
+        <div class="mb-4">
+            <h3 class="font-bold text-lg">Email Notifications</h3>
+            <p class="text-sm text-gray-500">Receive real-time alerts for high-severity attacks and daily summary reports.</p>
+        </div>
+
+        <!-- Gmail SMTP setup guide -->
+        <div class="mb-5 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
+            <span class="text-amber-500 text-lg">📧</span>
+            <div class="text-xs text-amber-800">
+                <strong>Gmail Setup:</strong> Use a dedicated Gmail account.
+                Enable 2-Step Verification, then create an
+                <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer"
+                   class="font-bold text-amber-700 hover:underline">App Password →</a>
+                (Select "Mail" → "Other" → name it "Honeypot").
+                Paste the 16-character password below.
+            </div>
+        </div>
+
+        <!-- SMTP Configuration -->
+        <div class="grid grid-cols-2 gap-4 mb-4">
+            <div>
+                <label class="block text-xs font-bold text-gray-700 mb-1">Sender Gmail Address</label>
+                <input id="email-smtp-address" type="email" placeholder="your.honeypot@gmail.com"
+                       class="w-full px-3 py-2 border rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-300">
+                <p class="text-xs text-gray-400 mt-1">The Gmail account that sends alerts</p>
+            </div>
+            <div>
+                <label class="block text-xs font-bold text-gray-700 mb-1">Gmail App Password</label>
+                <div class="relative">
+                    <input id="email-smtp-password" type="password" placeholder="xxxx xxxx xxxx xxxx"
+                           class="w-full px-3 py-2 border rounded text-sm font-mono pr-10 focus:outline-none focus:ring-2 focus:ring-amber-300">
+                    <button type="button" onclick="toggleSmtpPasswordVisibility()" id="smtp-eye-btn"
+                            class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+                        👁️
+                    </button>
+                </div>
+                <div class="mt-1">
+                    <span id="smtp-password-badge" class="inline-block px-2 py-0.5 rounded text-xs font-bold bg-gray-200 text-gray-600">
+                        No password saved
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-5">
+            <label class="block text-xs font-bold text-gray-700 mb-1">Recipient Email Address</label>
+            <input id="email-recipient" type="email" placeholder="admin@example.com"
+                   class="w-full px-3 py-2 border rounded text-sm font-mono focus:outline-none focus:ring-2 focus:ring-amber-300">
+            <p class="text-xs text-gray-400 mt-1">Where alert and summary emails will be delivered</p>
+        </div>
+
+        <hr class="my-5 border-gray-200">
+
+        <!-- Real-Time Alerts Toggle -->
+        <div class="flex items-center justify-between p-3 bg-gray-50 rounded mb-4">
+            <div>
+                <h4 class="text-sm font-bold">🚨 Real-Time Alerts</h4>
+                <p class="text-xs text-gray-600">Send an email for every attack detected (Internet Mode only, 5-min cooldown per IP)</p>
+            </div>
+            <label class="relative inline-block w-12 h-6">
+                <input type="checkbox" id="email-alerts-toggle" class="sr-only peer">
+                <div class="w-full h-full bg-gray-300 rounded-full peer peer-checked:bg-red-500 transition-all"></div>
+                <div class="absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-all peer-checked:translate-x-6"></div>
+            </label>
+        </div>
+
+        <div class="mb-5 p-3 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-600">
+            <strong>Zero Trust:</strong> Alerts fire for all attack types regardless of AbuseIPDB score. 
+            Severity is determined by attack type (injection/upload = Critical, brute force = High, recon = Medium).
+            A 5-minute cooldown per IP prevents email flooding.
+        </div>
+
+        <hr class="my-5 border-gray-200">
+
+        <!-- Daily Summary (manual only) -->
+        <div class="mb-4">
+            <h4 class="text-sm font-bold mb-1">📊 Daily Summary</h4>
+            <p class="text-xs text-gray-600 mb-3">Generate a summary report of the last 24 hours on demand.</p>
+        </div>
+
+        <!-- Test Buttons -->
+        <div class="flex gap-3">
+            <button onclick="testEmail()" id="test-email-btn"
+                    class="px-4 py-2 bg-amber-100 text-amber-700 font-bold text-xs rounded hover:bg-amber-200 transition-all flex items-center gap-1">
+                <span>📧</span> Send Test Email
+            </button>
+            <button onclick="testDailySummary()" id="test-summary-btn"
+                    class="px-4 py-2 bg-blue-100 text-blue-700 font-bold text-xs rounded hover:bg-blue-200 transition-all flex items-center gap-1">
+                <span>📊</span> Send Summary Now
+            </button>
+        </div>
+        <div id="email-test-status" class="hidden mt-3 text-xs font-medium"></div>
+    </div>
+
+    <div class="bg-white rounded-xl border-2 border-red-200 shadow-sm overflow-hidden mt-8 mb-8">
+        <div class="bg-red-50 px-6 py-4 border-b border-red-200">
+            <h3 class="font-bold text-red-800 flex items-center gap-2">
+                <span>⚠️</span> Danger Zone
+            </h3>
+            <p class="text-xs text-red-600 mt-1">Irreversible actions - proceed with caution</p>
+        </div>
+        
+        <div class="p-6 space-y-4">
+            <!-- Clear Attack Logs -->
+            <div class="flex items-center justify-between p-4 bg-red-50/50 rounded-lg border border-red-100">
+                <div>
+                    <h4 class="font-bold text-gray-900 text-sm">Clear All Attack Logs</h4>
+                    <p class="text-xs text-gray-500 mt-1">
+                        Permanently delete all captured attacks from the database. 
+                        This action cannot be undone.
+                    </p>
+                </div>
+                <button onclick="clearAllLogs()" 
+                        class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-2">
+                    <span>🗑️</span> Clear All Logs
+                </button>
+            </div>
+            
+            <!-- Reset IP Intelligence Cache -->
+            <div class="flex items-center justify-between p-4 bg-orange-50/50 rounded-lg border border-orange-100">
+                <div>
+                    <h4 class="font-bold text-gray-900 text-sm">Clear IP Intelligence Cache</h4>
+                    <p class="text-xs text-gray-500 mt-1">
+                        Clear cached AbuseIPDB lookups. Next IP checks will query the API fresh.
+                    </p>
+                </div>
+                <button onclick="clearIpCache()" 
+                        class="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-2">
+                    <span>🔄</span> Clear Cache
+                </button>
+            </div>
+            
+            <!-- Factory Reset (Optional) -->
+            <div class="flex items-center justify-between p-4 bg-gray-100 rounded-lg border border-gray-200">
+                <div>
+                    <h4 class="font-bold text-gray-900 text-sm">Factory Reset</h4>
+                    <p class="text-xs text-gray-500 mt-1">
+                        Reset all settings to defaults and clear all data. Use with extreme caution.
+                    </p>
+                </div>
+                <button onclick="factoryReset()" 
+                        class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg text-xs font-bold transition-colors flex items-center gap-2">
+                    <span>🏭</span> Factory Reset
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- APPLY BUTTON                                                       -->
+    <!-- ================================================================ -->
+    <button id="apply-settings-btn" onclick="applyAllSettings()"
+            class="w-full py-4 bg-gradient-to-r from-blue-600 to-blue-700 text-white font-bold rounded-lg hover:from-blue-700 hover:to-blue-800 transition-all shadow-lg">
+        💾 Apply All Configuration Changes
+    </button>
+    
+    <div id="success-message" class="hidden mt-4 p-4 bg-green-50 border-2 border-green-200 rounded-lg">
+        <div class="flex items-center gap-2">
+            <span class="text-green-600 text-xl">✓</span>
+            <span class="text-green-900 font-bold">Configuration saved successfully!</span>
+        </div>
+    </div>
+
+    <!-- System Information Footer -->
+    <div class="mt-8 p-4 bg-gray-800 text-white rounded-lg text-xs">
+        <div class="grid grid-cols-3 gap-4">
+            <div>
+                <span class="text-gray-400">Flask Version:</span>
+                <span class="font-mono ml-2">2.3.0</span>
+            </div>
+            <div>
+                <span class="text-gray-400">Database:</span>
+                <span class="font-mono ml-2">SQLite 3</span>
+            </div>
+            <div>
+                <span class="text-gray-400">Uptime:</span>
+                <span class="font-mono ml-2">—</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+// ============================================================
+// STATE
+// ============================================================
+let selectedMode   = 'simulation';
+let selectedVendor = 'Generic';
+let keyEyeOpen     = false;
+
+const VENDOR_OPTIONS = [
+    { value: 'Generic',    label: 'Generic IoT Router',  icon: '📡', type: 'router' },
+    { value: 'Cisco',      label: 'Cisco IOS',           icon: '🔧', type: 'router' },
+    { value: 'TP-Link',    label: 'TP-Link Deco',        icon: '📶', type: 'router' },
+    { value: 'Netgear',    label: 'Netgear Nighthawk',   icon: '🛜', type: 'router' },
+    { value: 'D-Link',     label: 'D-Link DIR',          icon: '🔌', type: 'router' },
+    { value: 'Hikvision',  label: 'Hikvision DS-2CD',    icon: '📹', type: 'camera' },
+    { value: 'Dahua',      label: 'Dahua DH-IPC',        icon: '🎥', type: 'camera' },
+    { value: 'Axis',       label: 'Axis M3065-V',        icon: '📷', type: 'camera' },
+];
+
+// ============================================================
+// DEPLOYMENT MODE
+// ============================================================
+function selectMode(mode) {
+    selectedMode = mode;
+    const simCard = document.getElementById('mode-simulation');
+    const intCard = document.getElementById('mode-internet');
+    const warning = document.getElementById('internet-warning');
+
+    if (mode === 'simulation') {
+        simCard.classList.add('border-blue-500', 'bg-blue-50');
+        simCard.classList.remove('border-gray-200', 'bg-white');
+        intCard.classList.add('border-gray-200', 'bg-white');
+        intCard.classList.remove('border-red-500', 'bg-red-50');
+        warning.classList.add('hidden');
+    } else {
+        intCard.classList.add('border-red-500', 'bg-red-50');
+        intCard.classList.remove('border-gray-200', 'bg-white');
+        simCard.classList.add('border-gray-200', 'bg-white');
+        simCard.classList.remove('border-blue-500', 'bg-blue-50');
+        warning.classList.remove('hidden');
+    }
+}
+
+// ============================================================
+// DEVICE PERSONA CARDS
+// ============================================================
+function renderPersonaCards() {
+    const routerContainer = document.getElementById('persona-cards-router');
+    const cameraContainer = document.getElementById('persona-cards-camera');
+    
+    const routers = VENDOR_OPTIONS.filter(v => v.type === 'router');
+    const cameras = VENDOR_OPTIONS.filter(v => v.type === 'camera');
+    
+    const cardHTML = (v) => `
+        <div id="persona-${v.value}"
+             class="border-2 rounded-lg p-3 text-center cursor-pointer hover:shadow-md transition-all
+                    ${v.value === selectedVendor ? 'border-indigo-500 bg-indigo-50' : 'border-gray-200 bg-white'}"
+             onclick="selectPersona('${v.value}')">
+            <div class="text-xl mb-1">${v.icon}</div>
+            <div class="text-xs font-bold text-gray-800 leading-tight">${v.label}</div>
+        </div>
+    `;
+    
+    routerContainer.innerHTML = routers.map(cardHTML).join('');
+    cameraContainer.innerHTML = cameras.map(cardHTML).join('');
+}
+
+function selectPersona(vendor) {
+    selectedVendor = vendor;
+    VENDOR_OPTIONS.forEach(v => {
+        const card = document.getElementById(`persona-${v.value}`);
+        if (v.value === vendor) {
+            card.classList.add('border-indigo-500', 'bg-indigo-50');
+            card.classList.remove('border-gray-200', 'bg-white');
+        } else {
+            card.classList.add('border-gray-200', 'bg-white');
+            card.classList.remove('border-indigo-500', 'bg-indigo-50');
+        }
+    });
+}
+
+// ============================================================
+// API KEY — show/hide & validate
+// ============================================================
+function toggleKeyVisibility() {
+    keyEyeOpen = !keyEyeOpen;
+    document.getElementById('api-key-input').type = keyEyeOpen ? 'text' : 'password';
+}
+
+async function validateKey() {
+    const key    = document.getElementById('api-key-input').value.trim();
+    const status = document.getElementById('key-status');
+    const btn    = document.getElementById('validate-btn');
+
+    if (!key) {
+        status.classList.remove('hidden');
+        status.className    = 'mt-3 text-xs font-medium text-red-600';
+        status.textContent  = '⚠️ Enter a key first.';
+        return;
+    }
+
+    btn.disabled    = true;
+    btn.textContent = '⏳ Checking…';
+    status.classList.remove('hidden');
+    status.className   = 'mt-3 text-xs font-medium text-gray-500';
+    status.textContent = 'Contacting AbuseIPDB…';
+
+    try {
+        const res  = await fetch('/api/validate_key', {
+            method:  'POST',
+            headers: {'Content-Type': 'application/json'},
+            body:    JSON.stringify({api_key: key})
+        });
+        const data = await res.json();
+
+        if (data.valid) {
+            status.className   = 'mt-3 text-xs font-medium text-green-700';
+            status.textContent = '✓ ' + data.message;
+        } else {
+            status.className   = 'mt-3 text-xs font-medium text-red-600';
+            status.textContent = '✗ ' + data.message;
+        }
+    } catch (e) {
+        status.className   = 'mt-3 text-xs font-medium text-red-600';
+        status.textContent = '✗ Network error — check your connection.';
+    }
+
+    btn.disabled    = false;
+    btn.textContent = '🔍 Validate Key';
+}
+
+// ============================================================
+// EMAIL NOTIFICATIONS — show/hide SMTP password, test buttons
+// ============================================================
+let smtpEyeOpen = false;
+
+function toggleSmtpPasswordVisibility() {
+    smtpEyeOpen = !smtpEyeOpen;
+    document.getElementById('email-smtp-password').type = smtpEyeOpen ? 'text' : 'password';
+}
+
+function updateSmtpPasswordBadge(isSet) {
+    const badge = document.getElementById('smtp-password-badge');
+    if (isSet) {
+        badge.className   = 'inline-block px-2 py-0.5 rounded text-xs font-bold bg-green-100 text-green-700';
+        badge.textContent = '✓ App Password saved';
+    } else {
+        badge.className   = 'inline-block px-2 py-0.5 rounded text-xs font-bold bg-gray-200 text-gray-600';
+        badge.textContent = 'No password saved';
+    }
+}
+
+async function testEmail() {
+    const btn    = document.getElementById('test-email-btn');
+    const status = document.getElementById('email-test-status');
+
+    // Quick validation
+    const sender    = document.getElementById('email-smtp-address').value.trim();
+    const recipient = document.getElementById('email-recipient').value.trim();
+    if (!sender || !recipient) {
+        status.classList.remove('hidden');
+        status.className   = 'mt-3 text-xs font-medium text-red-600';
+        status.textContent = '⚠️ Fill in sender and recipient email, then Apply settings first.';
+        return;
+    }
+
+    btn.disabled    = true;
+    btn.innerHTML   = '⏳ Sending…';
+    status.classList.remove('hidden');
+    status.className   = 'mt-3 text-xs font-medium text-gray-500';
+    status.textContent = 'Connecting to Gmail SMTP…';
+
+    try {
+        const res  = await fetch('/api/test_email', { method: 'POST' });
+        const data = await res.json();
+
+        if (data.success) {
+            status.className   = 'mt-3 text-xs font-medium text-green-700';
+            status.textContent = '✓ ' + data.message;
+        } else {
+            status.className   = 'mt-3 text-xs font-medium text-red-600';
+            status.textContent = '✗ ' + data.message;
+        }
+    } catch (e) {
+        status.className   = 'mt-3 text-xs font-medium text-red-600';
+        status.textContent = '✗ Network error — is Flask running?';
+    }
+
+    btn.disabled  = false;
+    btn.innerHTML = '<span>📧</span> Send Test Email';
+}
+
+async function testDailySummary() {
+    const btn    = document.getElementById('test-summary-btn');
+    const status = document.getElementById('email-test-status');
+
+    btn.disabled    = true;
+    btn.innerHTML   = '⏳ Generating…';
+    status.classList.remove('hidden');
+    status.className   = 'mt-3 text-xs font-medium text-gray-500';
+    status.textContent = 'Generating daily summary…';
+
+    try {
+        const res  = await fetch('/api/send_daily_summary', { method: 'POST' });
+        const data = await res.json();
+
+        status.className   = 'mt-3 text-xs font-medium text-green-700';
+        status.textContent = '✓ ' + data.message + ' Check your inbox.';
+    } catch (e) {
+        status.className   = 'mt-3 text-xs font-medium text-red-600';
+        status.textContent = '✗ Failed to trigger summary.';
+    }
+
+    btn.disabled  = false;
+    btn.innerHTML = '<span>📊</span> Send Summary Now';
+}
+
+// ============================================================
+// APPLY ALL
+// ============================================================
+async function applyAllSettings() {
+    const btn        = document.getElementById('apply-settings-btn');
+    const successMsg = document.getElementById('success-message');
+
+    btn.disabled  = true;
+    btn.innerHTML = '⏳ Saving Configuration…';
+
+    const settings = {
+        mode:                 selectedMode,
+        port:                 parseInt(document.getElementById('bind-port').value),
+        rate_limit_enabled:   document.getElementById('rate-limit-toggle').checked,
+        max_requests_per_ip:  parseInt(document.getElementById('max-requests').value),
+        auto_block_threshold: parseInt(document.getElementById('block-threshold').value),
+        vendor:               selectedVendor,
+        api_key:              document.getElementById('api-key-input').value.trim(),
+        // Email notification settings (FR-10)
+        email_alerts_enabled:   document.getElementById('email-alerts-toggle').checked,
+        email_recipient:        document.getElementById('email-recipient').value.trim(),
+        email_smtp_address:     document.getElementById('email-smtp-address').value.trim(),
+        email_smtp_password:    document.getElementById('email-smtp-password').value.trim()
+    };
+
+    try {
+        const res  = await fetch('/api/config', {
+            method:  'POST',
+            headers: {'Content-Type': 'application/json'},
+            body:    JSON.stringify(settings)
+        });
+        const data = await res.json();
+
+        if (data.status === 'success') {
+            // Update mode badge
+            const badge = document.getElementById('current-mode-badge');
+            if (selectedMode === 'internet') {
+                badge.className   = 'px-4 py-2 bg-red-100 text-red-900 rounded-lg font-bold text-sm';
+                badge.textContent = '🌐 INTERNET MODE';
+            } else {
+                badge.className   = 'px-4 py-2 bg-blue-100 text-blue-900 rounded-lg font-bold text-sm';
+                badge.textContent = '🔒 SIMULATION MODE';
+            }
+
+            // Update binding display
+            document.getElementById('current-bind').textContent =
+                data.config.bind_host + ':' + data.config.port;
+
+            // Update API key badge
+            updateKeyBadge(data.config.api_key_set);
+
+            // Update SMTP password badge
+            updateSmtpPasswordBadge(data.config.email_smtp_password_set);
+
+            // Show success toast
+            successMsg.classList.remove('hidden');
+            setTimeout(() => successMsg.classList.add('hidden'), 3000);
+
+            if (selectedMode === 'internet') {
+                alert('⚠️ Internet mode activated!\n\nIMPORTANT: Restart Flask server:\n  sudo python3 app.py\n\nSystem will be exposed to public internet traffic.');
+            } else {
+                alert('✓ Configuration saved!\n\n💡 Note: Port changes require a restart.');
+            }
+        }
+    } catch (err) {
+        alert('❌ Error saving configuration: ' + err.message);
+    }
+
+    btn.disabled  = false;
+    btn.innerHTML = '💾 Apply All Configuration Changes';
+}
+
+// ============================================================
+// HELPERS
+// ============================================================
+function updateKeyBadge(isSet) {
+    const badge = document.getElementById('key-state-badge');
+    if (isSet) {
+        badge.className   = 'inline-block px-2 py-0.5 rounded text-xs font-bold bg-green-100 text-green-700';
+        badge.textContent = '✓ API key saved';
+    } else {
+        badge.className   = 'inline-block px-2 py-0.5 rounded text-xs font-bold bg-gray-200 text-gray-600';
+        badge.textContent = 'No key saved';
+    }
+}
+
+// ============================================================
+// PAGE LOAD — populate every field from live config
+// ============================================================
+async function loadConfig() {
+    // Public IP
+    fetch('https://api.ipify.org?format=json')
+        .then(r => r.json())
+        .then(d => document.getElementById('public-ip').textContent = d.ip)
+        .catch(() => document.getElementById('public-ip').textContent = 'Unable to fetch');
+
+    // System info
+    fetch('/api/system_info')
+        .then(r => r.json())
+        .then(d => {
+            document.getElementById('local-ip').textContent = d.local_ip;
+            let bindText = `${d.bind_host}:${d.port}`;
+            if (d.bind_host === '0.0.0.0')  bindText += ' (all interfaces)';
+            if (d.bind_host === '127.0.0.1') bindText += ' (localhost only)';
+            document.getElementById('current-bind').textContent = bindText;
+        })
+        .catch(() => {
+            document.getElementById('local-ip').textContent    = 'Unable to detect';
+            document.getElementById('current-bind').textContent = 'Unable to detect';
+        });
+
+    // Main config
+    try {
+        const res    = await fetch('/api/config');
+        const config = await res.json();
+
+        selectMode(config.mode || 'simulation');
+        document.getElementById('bind-port').value      = config.port || 80;
+        document.getElementById('current-bind').textContent =
+            (config.bind_host || '0.0.0.0') + ':' + (config.port || 80);
+        document.getElementById('rate-limit-toggle').checked  = config.rate_limit_enabled !== false;
+        document.getElementById('max-requests').value    = config.max_requests_per_ip  || 100;
+        document.getElementById('block-threshold').value = config.auto_block_threshold || 90;
+
+        // Persona — server returns the saved vendor string
+        selectedVendor = config.vendor || 'Generic';
+        renderPersonaCards();
+
+        // API key
+        document.getElementById('api-key-input').value = config.api_key || '';
+        updateKeyBadge(config.api_key_set || false);
+
+        // Email notification settings (FR-10)
+        document.getElementById('email-smtp-address').value  = config.email_smtp_address || '';
+        document.getElementById('email-recipient').value     = config.email_recipient || '';
+        document.getElementById('email-alerts-toggle').checked = config.email_alerts_enabled || false;
+        updateSmtpPasswordBadge(config.email_smtp_password_set || false);
+        // Note: password is never sent from server — field stays empty (placeholder hint)
+        document.getElementById('email-smtp-password').placeholder =
+            (config.email_smtp_password_set) ? '••••••••••••••••  (saved)' : 'xxxx xxxx xxxx xxxx';
+
+    } catch (e) {
+        console.warn('Could not load config:', e);
+        selectedVendor = 'Generic';
+        renderPersonaCards();
+    }
+}
+
+function clearAllLogs() {
+    if (confirm('⚠️ WARNING: This will permanently delete ALL attack logs!\n\nAre you sure you want to continue?')) {
+        if (confirm('🔴 FINAL CONFIRMATION: This action CANNOT be undone.\n\nType "DELETE" mentally and click OK to proceed.')) {
+            fetch('/api/clear', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    showNotification('✅ All attack logs have been cleared', 'success');
+                })
+                .catch(err => {
+                    showNotification('❌ Failed to clear logs: ' + err, 'error');
+                });
+        }
+    }
+}
+
+// Clear IP intelligence cache
+function clearIpCache() {
+    if (confirm('Clear all cached IP reputation data?\n\nThis will cause fresh AbuseIPDB lookups (uses API quota).')) {
+        fetch('/api/clear_ip_cache', { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                showNotification('✅ IP cache cleared. ' + (data.cleared || 0) + ' entries removed.', 'success');
+            })
+            .catch(err => {
+                showNotification('❌ Failed to clear cache: ' + err, 'error');
+            });
+    }
+}
+
+// Factory reset
+function factoryReset() {
+    if (confirm('⚠️ FACTORY RESET will:\n\n• Delete ALL attack logs\n• Clear IP cache\n• Reset ALL settings to defaults\n\nAre you absolutely sure?')) {
+        if (prompt('Type "RESET" to confirm factory reset:') === 'RESET') {
+            fetch('/api/factory_reset', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    showNotification('✅ Factory reset complete. Reloading...', 'success');
+                    setTimeout(() => location.reload(), 1500);
+                })
+                .catch(err => {
+                    showNotification('❌ Factory reset failed: ' + err, 'error');
+                });
+        }
+    }
+}
+
+// Notification helper (add if not already present)
+function showNotification(message, type = 'info') {
+    const colors = {
+        success: 'bg-green-500',
+        error: 'bg-red-500',
+        info: 'bg-blue-500'
+    };
+    
+    const notification = document.createElement('div');
+    notification.className = `fixed top-4 right-4 ${colors[type]} text-white px-6 py-3 rounded-lg shadow-lg z-50 text-sm font-medium`;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        notification.style.transition = 'opacity 0.3s';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
+}
+
+loadConfig();
+</script>
+{% endblock %}

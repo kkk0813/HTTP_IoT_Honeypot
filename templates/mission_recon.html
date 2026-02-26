@@ -1,0 +1,408 @@
+{% extends "base.html" %}
+{% block title %}Phase 1: Reconnaissance | IoT Honeypot{% endblock %}
+{% block extra_head %}
+<style>
+    /* Sidebar auto-hide */
+    body.lab-mode > aside { transform: translateX(-100%); position: fixed; z-index: 100; transition: transform 0.3s ease; height: 100vh; box-shadow: 4px 0 20px rgba(0,0,0,0.5); }
+    body.lab-mode > aside.sidebar-visible { transform: translateX(0); }
+    body.lab-mode > main { margin-left: 0 !important; width: 100% !important; }
+    .sidebar-toggle-btn { position: fixed; left: 8px; top: 50%; transform: translateY(-50%); z-index: 90; background: #1e293b; border: 1px solid #475569; color: #94a3b8; padding: 10px 6px; border-radius: 0 8px 8px 0; cursor: pointer; transition: all 0.2s; }
+    .sidebar-toggle-btn:hover { background: #334155; color: white; padding-left: 10px; }
+    body.lab-mode > aside.sidebar-visible ~ main .sidebar-toggle-btn { left: 264px; }
+
+    .mission-layout { display: flex; flex-direction: column; height: 100%; background: #0f172a; color: #e2e8f0; }
+    .phase-bar { background: #1e293b; border-bottom: 1px solid #334155; padding: 8px 16px; }
+    .phase-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .phase-dot.done { background: #22c55e; }
+    .phase-dot.active { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+    .phase-dot.pending { background: #475569; }
+    .phase-connector { width: 40px; height: 2px; }
+    .phase-connector.done { background: #22c55e; }
+    .phase-connector.pending { background: #475569; }
+    .split-panels { flex: 1; display: flex; overflow: hidden; }
+    .panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .panel-body { flex: 1; overflow-y: auto; }
+    .terminal-bg { background: #0d1117; }
+    .terminal-input { background: transparent; border: none; outline: none; color: #22c55e; font-family: monospace; caret-color: #22c55e; }
+    .prompt { color: #ef4444; }
+    .cmd-output { white-space: pre-wrap; word-break: break-all; font-size: 11px; line-height: 1.5; }
+    .hint-card { background: #1a1a2e; border: 1.5px solid #f59e0b; border-radius: 8px; padding: 12px; }
+    .hint-card code { word-break: break-all; white-space: pre-wrap; display: inline-block; max-width: 100%; }
+    .tab-hint { display: inline-block; background: #334155; color: #94a3b8; font-size: 9px; padding: 1px 6px; border-radius: 3px; font-family: monospace; }
+    .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+    .cursor-blink::after { content: '█'; animation: blink 1s step-end infinite; color: #22c55e; }
+    @keyframes typeOut { from { max-height: 0; } to { max-height: 500px; } }
+    .type-anim { animation: typeOut 0.5s ease-out; overflow: hidden; }
+</style>
+{% endblock %}
+
+{% block content %}
+<button class="sidebar-toggle-btn" onclick="toggleSidebar()" title="Toggle Sidebar">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+</button>
+<div class="mission-layout">
+    <!-- Phase Progress Bar -->
+    <div class="phase-bar">
+        <div class="flex items-center justify-between">
+            <a href="/simulation" class="text-gray-400 hover:text-white text-xs">← Back</a>
+            <div class="flex items-center gap-1">
+                <div class="phase-dot active"></div>
+                <span class="text-xs font-bold text-amber-400 mx-1">Recon</span>
+                <div class="phase-connector pending"></div>
+                <div class="phase-dot pending"></div>
+                <span class="text-xs text-gray-500 mx-1">Weapon</span>
+                <div class="phase-connector pending"></div>
+                <div class="phase-dot pending"></div>
+                <span class="text-xs text-gray-500 mx-1">Exploit</span>
+                <div class="phase-connector pending"></div>
+                <div class="phase-dot pending"></div>
+                <span class="text-xs text-gray-500 mx-1">Success</span>
+            </div>
+            <span class="text-[10px] text-gray-500 font-mono" id="timer">00:00</span>
+        </div>
+    </div>
+
+    <div class="split-panels">
+        <!-- LEFT: Attacker Terminal -->
+        <div class="panel border-r border-gray-700">
+            <div class="bg-red-900/30 px-4 py-2 border-b border-red-800/50 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span>🔍</span>
+                    <div>
+                        <h2 class="font-bold text-red-400 text-sm">RECONNAISSANCE</h2>
+                        <p class="text-[10px] text-red-300/60">Kali Linux Terminal</p>
+                    </div>
+                </div>
+                <span class="text-[10px] text-gray-400 font-mono" id="cmd-count">0/2 commands</span>
+            </div>
+
+            <!-- Hint Card -->
+            <div class="px-4 py-3 bg-gray-900/80 border-b border-gray-700">
+                <div class="hint-card">
+                    <div class="text-[10px] font-bold text-amber-400 uppercase mb-1">📋 Mission Directive</div>
+                    <p id="hint-text" class="text-xs text-gray-300 mb-2">Target IP is <code class="text-green-400 bg-gray-800 px-1 rounded">{{ target_ip }}</code>. Scan for open ports and service versions.</p>
+                    <div class="flex items-center gap-2">
+                        <span class="text-[10px] text-gray-400">Command:</span>
+                        <code id="hint-cmd" class="text-xs font-mono bg-gray-800 text-green-400 px-2 py-0.5 rounded cursor-pointer hover:bg-gray-700" onclick="copyHint()">nmap -sV {{ target_ip }}</code>
+                        <span class="tab-hint">Press TAB to auto-complete</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Terminal -->
+            <div class="panel-body terminal-bg custom-scrollbar p-4 font-mono text-xs" id="terminal">
+                <div class="text-gray-500 mb-2">┌──(kali㉿attacker)-[~]</div>
+                <div class="flex items-center">
+                    <span class="prompt">└─$ </span>
+                    <input type="text" id="cmd-input" class="terminal-input flex-1 text-sm"
+                        placeholder="" autocomplete="off" spellcheck="false"
+                        onkeydown="handleKey(event)">
+                </div>
+            </div>
+
+            <!-- Proceed Button -->
+            <div class="bg-gray-800/80 border-t border-gray-700 p-3 text-center">
+                <button id="btn-proceed" disabled
+                    class="px-6 py-2 bg-gray-600 text-gray-400 rounded font-bold text-sm cursor-not-allowed transition-all"
+                    onclick="proceed()">
+                    🔒 Complete 2 commands to proceed
+                </button>
+            </div>
+        </div>
+
+        <!-- RIGHT: Defender Log -->
+        <div class="panel">
+            <div class="bg-blue-900/30 px-4 py-2 border-b border-blue-800/50 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span>🛡️</span>
+                    <div>
+                        <h2 class="font-bold text-blue-400 text-sm">DEFENDER VIEW</h2>
+                        <p class="text-[10px] text-blue-300/60">Honeypot IDS console</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                    <span class="text-[10px] text-green-400 font-mono">MONITORING</span>
+                </div>
+            </div>
+            <div class="panel-body terminal-bg custom-scrollbar p-4 font-mono text-[10px] space-y-0.5" id="defender-log">
+                <div class="text-gray-500">[SYS] Honeypot sensor active on port 80</div>
+                <div class="text-gray-500">[SYS] Persona: {{ persona_name }}</div>
+                <div class="text-gray-500">[SYS] IDS signatures loaded</div>
+                <div class="text-green-400">[READY] Monitoring incoming connections...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.body.classList.add('lab-mode');
+    let sidebarVisible = false;
+    function toggleSidebar() {
+        const s = document.querySelector('body > aside');
+        sidebarVisible = !sidebarVisible;
+        s.classList.toggle('sidebar-visible', sidebarVisible);
+    }
+
+    const TARGET = '{{ target_ip }}';
+    let completedCmds = 0;
+    let startTime = Date.now();
+    
+    // Save mission start time
+    sessionStorage.setItem('mission_start', startTime.toString());
+    sessionStorage.setItem('mission_recon_cmds', '0');
+
+    // Timer
+    setInterval(() => {
+        const s = Math.floor((Date.now() - startTime) / 1000);
+        document.getElementById('timer').textContent =
+            String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+    }, 1000);
+
+    // ===== COMMAND DEFINITIONS =====
+    const COMMANDS = [
+        {
+            id: 'nmap',
+            full: `nmap -sV ${TARGET}`,
+            hint_text: `Target IP is <code class="text-green-400 bg-gray-800 px-1 rounded">${TARGET}</code>. Scan for open ports and service versions.`,
+            hint_cmd: `nmap -sV ${TARGET}`,
+            tabs: [`nmap`, `nmap -sV`, `nmap -sV ${TARGET}`],
+            output: [
+                `Starting Nmap 7.94 ( https://nmap.org ) at 2025-01-15 14:22 UTC`,
+                `Nmap scan report for ${TARGET}`,
+                `Host is up (0.0012s latency).`,
+                `Not shown: 998 closed tcp ports`,
+                `PORT    STATE SERVICE  VERSION`,
+                `\x1b[32m80/tcp  open  http     lighttpd 1.4.35\x1b[0m`,
+                `\x1b[32m443/tcp open  ssl/http lighttpd 1.4.35\x1b[0m`,
+                `MAC Address: 00:1A:2B:3C:4D:5E (IoT Device)`,
+                `Service Info: Device: IoT; OS: Linux 4.14`,
+                ``,
+                `Service detection performed. 2 services detected.`,
+                `Nmap done: 1 IP address (1 host up) scanned in 12.54 seconds`
+            ],
+            defender_logs: [
+                { t: '[ALERT] SYN scan detected from attacker', c: 'text-yellow-400' },
+                { t: '[RECON] Port scan: 1000 ports probed in 12s', c: 'text-orange-400' },
+                { t: '[RECON] Service version fingerprinting detected', c: 'text-orange-400' },
+                { t: '[MITRE] T1046 - Network Service Discovery', c: 'text-purple-400' },
+                { t: '[INFO] Attacker discovered HTTP on port 80, 443', c: 'text-gray-400' },
+            ]
+        },
+        {
+            id: 'curl',
+            full: `curl -I http://${TARGET}`,
+            hint_text: `Port 80 is open. Check the HTTP response headers for server information and fingerprints.`,
+            hint_cmd: `curl -I http://${TARGET}`,
+            tabs: [`curl`, `curl -I`, `curl -I http://${TARGET}`],
+            output: [
+                `HTTP/1.1 200 OK`,
+                `Server: lighttpd/1.4.35`,
+                `Content-Type: text/html; charset=UTF-8`,
+                `X-Powered-By: IoT-WebAdmin/1.4.2`,
+                `X-Frame-Options: DENY`,
+                `Set-Cookie: session=disabled; path=/`,
+                `Cache-Control: no-store`,
+                `Content-Length: 3847`,
+                ``,
+                `\x1b[33m[*] Login page detected at /login\x1b[0m`,
+                `\x1b[33m[*] Firmware version exposed: v1.4.2\x1b[0m`
+            ],
+            defender_logs: [
+                { t: '[ALERT] HTTP HEAD request from attacker', c: 'text-yellow-400' },
+                { t: '[RECON] HTTP fingerprinting - headers enumerated', c: 'text-orange-400' },
+                { t: '[MITRE] T1592 - Gather Victim Host Information', c: 'text-purple-400' },
+                { t: '[INFO] Server info & firmware version leaked', c: 'text-gray-400' },
+            ]
+        },
+        {
+            id: 'gobuster',
+            full: `gobuster dir -u http://${TARGET} -w common.txt`,
+            hint_text: `<span class="text-gray-500">(Optional)</span> Enumerate hidden directories and web paths on the target.`,
+            hint_cmd: `gobuster dir -u http://${TARGET} -w common.txt`,
+            tabs: [`gobuster`, `gobuster dir`, `gobuster dir -u http://${TARGET}`, `gobuster dir -u http://${TARGET} -w common.txt`],
+            output: [
+                `===============================================================`,
+                `Gobuster v3.6`,
+                `===============================================================`,
+                `[+] Url:            http://${TARGET}`,
+                `[+] Wordlist:       /usr/share/seclists/common.txt`,
+                `[+] Status codes:   200,204,301,302,307,401,403`,
+                `===============================================================`,
+                `\x1b[32m/login\x1b[0m               (Status: 200) [Size: 3847]`,
+                `\x1b[32m/admin\x1b[0m               (Status: 302) [-> /login]`,
+                `\x1b[32m/api\x1b[0m                 (Status: 401) [Size: 27]`,
+                `\x1b[33m/firmware\x1b[0m            (Status: 403) [Size: 15]`,
+                `\x1b[33m/backup\x1b[0m              (Status: 403) [Size: 15]`,
+                `===============================================================`,
+                `Finished: 4612 requests in 8.23s`
+            ],
+            defender_logs: [
+                { t: '[ALERT] Directory brute-force detected!', c: 'text-red-400' },
+                { t: '[RECON] 4612 path probes in 8s from attacker', c: 'text-orange-400' },
+                { t: '[MITRE] T1083 - File and Directory Discovery', c: 'text-purple-400' },
+                { t: '[INFO] Sensitive paths probed: /admin, /api, /firmware', c: 'text-gray-400' },
+            ]
+        }
+    ];
+
+    let cmdIndex = 0;
+    let tabIndex = 0;
+    let lastTabBase = '';
+
+    // ===== TAB AUTO-COMPLETE =====
+    function handleKey(e) {
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            const input = document.getElementById('cmd-input');
+            const cmd = COMMANDS[cmdIndex];
+            if (!cmd) return;
+            
+            const val = input.value.trim();
+            // Find next tab completion
+            for (let i = 0; i < cmd.tabs.length; i++) {
+                if (cmd.tabs[i].length > val.length && cmd.tabs[i].startsWith(val.substring(0, Math.max(val.length, 2)))) {
+                    input.value = cmd.tabs[i];
+                    return;
+                }
+            }
+            // If nothing matched, give the full command
+            input.value = cmd.full;
+        }
+        
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            executeCommand();
+        }
+    }
+
+    // ===== EXECUTE COMMAND =====
+    function executeCommand() {
+        const input = document.getElementById('cmd-input');
+        const typed = input.value.trim();
+        if (!typed) return;
+        
+        const terminal = document.getElementById('terminal');
+        const cmd = COMMANDS[cmdIndex];
+        
+        // Add typed command to terminal history
+        const cmdLine = document.createElement('div');
+        cmdLine.innerHTML = `<span class="prompt">└─$ </span><span class="text-green-400">${escH(typed)}</span>`;
+        
+        // Insert before the input line
+        const inputLine = input.parentElement;
+        const promptLine = inputLine.previousElementSibling;
+        terminal.insertBefore(cmdLine, promptLine);
+        promptLine.remove();
+        
+        // Check if command is correct
+        if (cmd && typed === cmd.full) {
+            // Correct command — show output
+            const outputDiv = document.createElement('div');
+            outputDiv.className = 'cmd-output text-gray-300 my-2 type-anim';
+            outputDiv.innerHTML = cmd.output.map(line => {
+                return line.replace(/\x1b\[32m/g, '<span class="text-green-400 font-bold">')
+                           .replace(/\x1b\[33m/g, '<span class="text-yellow-400">')
+                           .replace(/\x1b\[0m/g, '</span>');
+            }).join('\n');
+            terminal.insertBefore(outputDiv, inputLine);
+            
+            // Defender logs
+            logDefender(cmd.defender_logs);
+            
+            completedCmds++;
+            cmdIndex++;
+            sessionStorage.setItem('mission_recon_cmds', completedCmds.toString());
+            document.getElementById('cmd-count').textContent = `${completedCmds}/2 commands`;
+            
+            // Update hint for next command
+            updateHint();
+            
+            // Check if can proceed
+            if (completedCmds >= 2) {
+                const btn = document.getElementById('btn-proceed');
+                btn.disabled = false;
+                btn.className = 'px-6 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-black rounded font-bold text-sm hover:from-amber-400 hover:to-orange-400 transition-all shadow-lg cursor-pointer';
+                btn.textContent = '➡️ Proceed to Weaponization';
+            }
+        } else {
+            // Wrong command
+            const errDiv = document.createElement('div');
+            if (typed.startsWith('nmap') || typed.startsWith('curl') || typed.startsWith('gobuster')) {
+                errDiv.className = 'text-red-400 my-1';
+                errDiv.textContent = `${typed.split(' ')[0]}: invalid option or missing argument. Check the hint.`;
+            } else {
+                errDiv.className = 'text-red-400 my-1';
+                errDiv.textContent = `bash: ${typed.split(' ')[0]}: command not found`;
+            }
+            terminal.insertBefore(errDiv, inputLine);
+        }
+        
+        // New prompt
+        const newPrompt = document.createElement('div');
+        newPrompt.className = 'text-gray-500 mt-2';
+        newPrompt.textContent = '┌──(kali㉿attacker)-[~]';
+        terminal.insertBefore(newPrompt, inputLine);
+        
+        input.value = '';
+        inputLine.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function updateHint() {
+        const cmd = COMMANDS[cmdIndex];
+        if (cmd) {
+            document.getElementById('hint-text').innerHTML = cmd.hint_text;
+            document.getElementById('hint-cmd').textContent = cmd.full;
+        } else {
+            document.getElementById('hint-text').innerHTML = '✅ Reconnaissance complete! You\'ve gathered enough intel. <strong>Proceed to the next phase.</strong>';
+            document.getElementById('hint-cmd').textContent = '—';
+        }
+    }
+
+    function copyHint() {
+        const cmd = document.getElementById('hint-cmd').textContent;
+        if (cmd && cmd !== '—') {
+            document.getElementById('cmd-input').value = cmd;
+            document.getElementById('cmd-input').focus();
+        }
+    }
+
+    // ===== DEFENDER LOGGING =====
+    function logDefender(logs) {
+        const c = document.getElementById('defender-log');
+        const t = new Date().toLocaleTimeString();
+        
+        const sep = document.createElement('div');
+        sep.className = 'text-gray-600 mt-2';
+        sep.textContent = `[${t}] ─────────────────────`;
+        c.appendChild(sep);
+        
+        logs.forEach((log, i) => {
+            setTimeout(() => {
+                const d = document.createElement('div');
+                d.className = log.c;
+                d.textContent = log.t;
+                c.appendChild(d);
+                d.scrollIntoView({ behavior: 'smooth' });
+            }, (i + 1) * 150);
+        });
+    }
+
+    function proceed() {
+        window.location.href = '/lab/mission/weapon';
+    }
+
+    function escH(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+
+    // Focus terminal on load
+    document.getElementById('cmd-input').focus();
+    document.addEventListener('click', (e) => {
+        if (!e.target.closest('.hint-card') && !e.target.closest('button') && !e.target.closest('a')) {
+            document.getElementById('cmd-input').focus();
+        }
+    });
+</script>
+{% endblock %}

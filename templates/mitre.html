@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+
+{% block title %}MITRE ATT&CK Matrix | IoT Honeypot{% endblock %}
+
+{% block content %}
+<div class="flex-1 p-10 overflow-y-auto">
+    <header class="mb-8">
+        <h2 class="text-2xl font-bold text-gray-900">MITRE ATT&CK Technique Mapping</h2>
+        <p class="text-gray-500 text-sm">Real-time detection mapping for IoT attack vectors.</p>
+    </header>
+
+    <div class="grid grid-cols-3 gap-4">
+        <!-- Reconnaissance Column -->
+        <div class="space-y-4">
+            <div class="bg-gray-200 p-2 text-center text-[10px] font-bold uppercase rounded">Reconnaissance</div>
+            <div id="T1595" class="p-4 border rounded bg-white opacity-50 transition-all">
+                <div class="text-[10px] text-gray-400 font-bold">T1595</div>
+                <div class="text-sm font-bold">Active Scanning</div>
+                <div class="mt-2 text-[10px] text-blue-600 hidden count-label">0 Hits</div>
+            </div>
+        </div>
+
+        <!-- Initial Access Column -->
+        <div class="space-y-4">
+            <div class="bg-gray-200 p-2 text-center text-xs font-bold uppercase rounded">Initial Access</div>
+            <div id="T1190" class="p-4 border rounded bg-white opacity-50 transition-all">
+                <div class="text-[10px] text-gray-400 font-bold">T1190</div>
+                <div class="text-sm font-bold">Exploit Public Application (SQLi)</div>
+                <div class="mt-2 text-[10px] text-red-600 hidden count-label">0 Hits Detected</div>
+            </div>
+        </div>
+
+        <!-- Credential Access Column -->
+        <div class="space-y-4">
+            <div class="bg-gray-200 p-2 text-center text-xs font-bold uppercase rounded">Credential Access</div>
+            <div id="T1110" class="p-4 border rounded bg-white opacity-50 transition-all">
+                <div class="text-[10px] text-gray-400 font-bold">T1110</div>
+                <div class="text-sm font-bold">Brute Force</div>
+                <div class="mt-2 text-[10px] text-red-600 hidden count-label">0 Hits Detected</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Technique Detail Panel -->
+    <div id="mitre-detail" class="mt-8 p-6 bg-blue-900 text-white rounded-xl shadow-lg hidden">
+        <h3 id="tech-name" class="font-bold text-lg"></h3>
+        <p id="tech-id" class="text-xs text-blue-300 mb-2"></p>
+        <p id="tech-desc" class="text-sm leading-relaxed"></p>
+        <div class="mt-4 p-3 bg-blue-800 rounded text-[10px] italic">
+            <strong>Educational Context:</strong> This shows how attackers move through the "Kill Chain" to compromise IoT devices.
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function highlight(id, count, name, desc) {
+        const el = document.getElementById(id);
+        if(!el) return;
+        
+        el.classList.remove('opacity-50', 'bg-white');
+        el.classList.add('bg-red-50', 'border-red-500', 'ring-2', 'ring-red-200', 'cursor-pointer');
+        
+        const label = el.querySelector('.count-label');
+        label.innerText = `${count} Hits Detected`;
+        label.classList.remove('hidden');
+
+        el.onclick = () => {
+            const pane = document.getElementById('mitre-detail');
+            document.getElementById('tech-name').innerText = name;
+            document.getElementById('tech-id').innerText = "MITRE ID: " + id;
+            document.getElementById('tech-desc').innerText = desc;
+            pane.classList.remove('hidden');
+        };
+    }
+
+    function updateMatrix() {
+        fetch('/api/stats')
+            .then(res => res.json())
+            .then(data => {
+                const b = data.breakdown;
+                if(b["Reconnaissance (T1595)"]) {
+                    highlight('T1595', b["Reconnaissance (T1595)"], "Active Scanning", 
+                        "Automated tools scanning the network to identify open ports and services on the IoT device.");
+                }
+                if(b["SQL Injection (T1190)"]) {
+                    highlight('T1190', b["SQL Injection (T1190)"], "Exploit Public Application", 
+                        "Using malicious SQL queries to bypass security and access the honeypot's internal database.");
+                }
+                if(b["Brute Force (T1110)"]) {
+                    highlight('T1110', b["Brute Force (T1110)"], "Brute Force", 
+                        "Systematic guessing of factory-default usernames and passwords to gain initial access.");
+                }
+            });
+    }
+
+    setInterval(updateMatrix, 5000);
+    updateMatrix();
+</script>
+{% endblock %}

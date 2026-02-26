@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% block title %}Mission Complete! | IoT Honeypot{% endblock %}
+{% block extra_head %}
+<style>
+    /* Sidebar auto-hide */
+    body.lab-mode > aside { transform: translateX(-100%); position: fixed; z-index: 100; transition: transform 0.3s ease; height: 100vh; box-shadow: 4px 0 20px rgba(0,0,0,0.5); }
+    body.lab-mode > aside.sidebar-visible { transform: translateX(0); }
+    body.lab-mode > main { margin-left: 0 !important; width: 100% !important; }
+    .sidebar-toggle-btn { position: fixed; left: 8px; top: 50%; transform: translateY(-50%); z-index: 90; background: #1e293b; border: 1px solid #475569; color: #94a3b8; padding: 10px 6px; border-radius: 0 8px 8px 0; cursor: pointer; transition: all 0.2s; }
+    .sidebar-toggle-btn:hover { background: #334155; color: white; padding-left: 10px; }
+    body.lab-mode > aside.sidebar-visible ~ main .sidebar-toggle-btn { left: 264px; }
+
+    .success-layout { display: flex; flex-direction: column; height: 100%; background: #0f172a; color: #e2e8f0; overflow-y: auto; }
+    .phase-bar { background: #1e293b; border-bottom: 1px solid #334155; padding: 8px 16px; }
+    .phase-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .phase-dot.done { background: #22c55e; }
+
+    /* Confetti */
+    .confetti-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 50; overflow: hidden; }
+    .confetti {
+        position: absolute; top: -10px; width: 10px; height: 10px;
+        animation: confetti-fall linear forwards;
+    }
+    @keyframes confetti-fall {
+        0% { transform: translateY(-10px) rotate(0deg); opacity: 1; }
+        100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+    }
+
+    /* Glitch text */
+    .glitch { animation: glitch-flicker 3s infinite; }
+    @keyframes glitch-flicker {
+        0%, 95%, 100% { opacity: 1; }
+        96% { opacity: 0.6; transform: translateX(2px); }
+        97% { opacity: 0.8; transform: translateX(-2px); }
+    }
+
+    /* Pulse ring */
+    .pulse-ring { animation: ring-pulse 2s ease-out infinite; }
+    @keyframes ring-pulse {
+        0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5); }
+        70% { box-shadow: 0 0 0 20px rgba(34, 197, 94, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+    }
+
+    .stat-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 16px; text-align: center; }
+    .rank-badge { display: inline-block; padding: 6px 16px; border-radius: 999px; font-weight: 900; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<button class="sidebar-toggle-btn" onclick="toggleSidebar()" title="Toggle Sidebar">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+</button>
+<div class="success-layout">
+    <!-- Phase Bar (all done) -->
+    <div class="phase-bar">
+        <div class="flex items-center justify-between">
+            <a href="/simulation" class="text-gray-400 hover:text-white text-xs">← Lab Home</a>
+            <div class="flex items-center gap-1">
+                <div class="phase-dot done"></div>
+                <span class="text-xs text-green-400 mx-1">Recon</span>
+                <div class="h-0.5 w-10 bg-green-500"></div>
+                <div class="phase-dot done"></div>
+                <span class="text-xs text-green-400 mx-1">Weapon</span>
+                <div class="h-0.5 w-10 bg-green-500"></div>
+                <div class="phase-dot done"></div>
+                <span class="text-xs text-green-400 mx-1">Exploit</span>
+                <div class="h-0.5 w-10 bg-green-500"></div>
+                <div class="phase-dot done"></div>
+                <span class="text-xs font-bold text-green-400 mx-1">Complete ✓</span>
+            </div>
+            <span class="text-[10px] text-green-400 font-mono font-bold" id="final-time">00:00</span>
+        </div>
+    </div>
+
+    <!-- Confetti -->
+    <div class="confetti-container" id="confetti-box"></div>
+
+    <!-- Main Content -->
+    <div class="flex-1 flex flex-col items-center justify-center p-8">
+        <!-- Big Title -->
+        <div class="text-center mb-6">
+            <div class="pulse-ring inline-block rounded-full p-4 mb-4">
+                <span class="text-6xl">💀</span>
+            </div>
+            <h1 class="text-4xl font-black text-green-400 glitch mb-2">SYSTEM COMPROMISED</h1>
+            <p class="text-lg text-gray-400">You've successfully hacked the IoT device.</p>
+        </div>
+
+        <!-- Meme Message -->
+        <div class="bg-gray-800/80 border-2 border-green-500/30 rounded-xl p-5 mb-8 max-w-lg text-center">
+            <p id="meme-text" class="text-base text-gray-200 italic"></p>
+            <div id="meme-emoji" class="text-4xl mt-2"></div>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8 w-full max-w-3xl">
+            <div class="stat-card">
+                <div class="text-2xl mb-1">⏱️</div>
+                <div class="text-2xl font-black text-white" id="stat-time">--:--</div>
+                <div class="text-[10px] text-gray-400 uppercase font-bold">Total Time</div>
+            </div>
+            <div class="stat-card">
+                <div class="text-2xl mb-1">🎯</div>
+                <div class="text-2xl font-black text-white" id="stat-attempts">0</div>
+                <div class="text-[10px] text-gray-400 uppercase font-bold">Exploit Attempts</div>
+            </div>
+            <div class="stat-card">
+                <div class="text-2xl mb-1">🛡️</div>
+                <div class="text-2xl font-black text-white" id="stat-blocked">0</div>
+                <div class="text-[10px] text-gray-400 uppercase font-bold">Blocked by Defenses</div>
+            </div>
+            <div class="stat-card">
+                <div class="text-2xl mb-1">⚔️</div>
+                <div class="text-xl font-black text-white" id="stat-vector">—</div>
+                <div class="text-[10px] text-gray-400 uppercase font-bold">Attack Vector</div>
+            </div>
+        </div>
+
+        <!-- Hacker Rank -->
+        <div class="text-center mb-8">
+            <div class="text-xs text-gray-400 uppercase font-bold mb-2">Hacker Rating</div>
+            <div id="rank-badge" class="rank-badge">—</div>
+            <p id="rank-desc" class="text-xs text-gray-500 mt-2"></p>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="flex gap-4">
+            <a href="/lab/mission/recon" onclick="clearMission()"
+               class="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-black rounded-lg font-bold hover:from-amber-400 hover:to-orange-400 transition-all shadow-lg hover:scale-105">
+                🔄 New Mission
+            </a>
+            <a id="btn-defend" href="/lab/brute_force"
+               class="px-6 py-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg font-bold hover:from-blue-400 hover:to-cyan-400 transition-all shadow-lg hover:scale-105">
+                🛡️ Try Defending
+            </a>
+        </div>
+
+        <!-- Educational Note -->
+        <div class="mt-8 max-w-xl bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
+            <div class="flex items-start gap-3">
+                <span class="text-xl">📖</span>
+                <div>
+                    <h4 class="font-bold text-blue-400 text-sm mb-1">What did you learn?</h4>
+                    <p id="edu-note" class="text-xs text-gray-400 leading-relaxed">
+                        This mission demonstrated the full cyber kill chain: reconnaissance to discover attack surface,
+                        weaponization to prepare tools, and exploitation to compromise the target.
+                        In real-world scenarios, defenders use IDS, WAFs, and rate limiting to detect and block each phase.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.body.classList.add('lab-mode');
+    let sidebarVisible = false;
+    function toggleSidebar() {
+        const s = document.querySelector('body > aside');
+        sidebarVisible = !sidebarVisible;
+        s.classList.toggle('sidebar-visible', sidebarVisible);
+    }
+
+    // ===== MEMES =====
+    const MEMES = {
+        brute_force: [
+            { text: "The admin password was admin123. Truly a masterpiece of security engineering.", emoji: "🤦" },
+            { text: "You brute-forced an IoT device. The password was on a Post-it note this whole time.", emoji: "📝" },
+            { text: "14 million passwords in the wordlist and it was literally 'admin123'. IoT security moment.", emoji: "💀" },
+            { text: "Congratulations, you've hacked a toaster. It's making you burnt toast as revenge.", emoji: "🍞" },
+        ],
+        sqli: [
+            { text: "You just SQL-injected a router. The router is questioning its entire existence.", emoji: "🤖" },
+            { text: "' OR '1'='1 — The spell that bypasses 90% of IoT login pages since 1999.", emoji: "🧙" },
+            { text: "Bobby Tables would be proud. The database never saw it coming.", emoji: "📊" },
+            { text: "Input validation? Never heard of her. — This IoT device, probably.", emoji: "🙈" },
+        ],
+        cmdi: [
+            { text: "You just executed 'cat /etc/shadow' on someone's smart camera. It saw that coming. Literally.", emoji: "📸" },
+            { text: "The semicolon: a punctuation mark that ended this device's security career.", emoji: "💀" },
+            { text: "Congratulations, you have root access to a light bulb. Use this power wisely.", emoji: "💡" },
+            { text: "OS command injection: because why validate input when you can validate regret?", emoji: "🫠" },
+        ]
+    };
+
+    const RANKS = [
+        { max: 3, label: 'Elite Hacker', color: 'bg-red-500 text-white', desc: 'Minimum attempts. Surgical precision.' },
+        { max: 5, label: 'Skilled Operator', color: 'bg-orange-500 text-white', desc: 'Efficient and methodical. Well done.' },
+        { max: 8, label: 'Apprentice', color: 'bg-yellow-500 text-black', desc: 'Getting the hang of it. Practice makes perfect.' },
+        { max: 15, label: 'Script Kiddie', color: 'bg-blue-500 text-white', desc: 'You got there eventually. Plenty of room to grow.' },
+        { max: 999, label: 'Keyboard Smasher', color: 'bg-purple-500 text-white', desc: 'Brute force isn\'t just an attack type — it\'s your methodology.' },
+    ];
+
+    const VECTOR_LABELS = {
+        brute_force: 'Brute Force',
+        sqli: 'SQL Injection',
+        cmdi: 'Cmd Injection'
+    };
+
+    // ===== LOAD MISSION DATA =====
+    const missionStart = parseInt(sessionStorage.getItem('mission_start') || Date.now().toString());
+    const attackType = sessionStorage.getItem('mission_attack_type') || 'brute_force';
+    const attempts = parseInt(sessionStorage.getItem('mission_attempts') || '0');
+    const blocked = parseInt(sessionStorage.getItem('mission_blocked') || '0');
+    const totalSeconds = Math.floor((Date.now() - missionStart) / 1000);
+
+    // Timer
+    function fmtTime(s) {
+        return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+    }
+    document.getElementById('final-time').textContent = fmtTime(totalSeconds);
+    document.getElementById('stat-time').textContent = fmtTime(totalSeconds);
+    document.getElementById('stat-attempts').textContent = attempts;
+    document.getElementById('stat-blocked').textContent = blocked;
+    document.getElementById('stat-vector').textContent = VECTOR_LABELS[attackType] || attackType;
+
+    // Defend button links to the attack lab for sandbox mode
+    document.getElementById('btn-defend').href = `/lab/${attackType}`;
+
+    // Meme
+    const memeList = MEMES[attackType] || MEMES.brute_force;
+    const meme = memeList[Math.floor(Math.random() * memeList.length)];
+    document.getElementById('meme-text').textContent = meme.text;
+    document.getElementById('meme-emoji').textContent = meme.emoji;
+
+    // Rank
+    const rank = RANKS.find(r => attempts <= r.max) || RANKS[RANKS.length - 1];
+    document.getElementById('rank-badge').textContent = rank.label;
+    document.getElementById('rank-badge').className = `rank-badge ${rank.color}`;
+    document.getElementById('rank-desc').textContent = rank.desc;
+
+    // Educational note per attack type
+    const EDU_NOTES = {
+        brute_force: "This mission demonstrated how default credentials on IoT devices create an easy attack path. In the real world, changing default passwords and enabling account lockout policies (MITRE M1032) are the primary defenses against brute force attacks.",
+        sqli: "This mission showed how unsanitized input fields allow SQL injection to bypass authentication entirely. Parameterized queries, input validation, and Web Application Firewalls (MITRE M1050) are essential defenses.",
+        cmdi: "This mission demonstrated how user input passed directly to system shells enables command injection. Input sanitization, least-privilege execution, and WAF signature filters (MITRE M1050) prevent this class of attack."
+    };
+    document.getElementById('edu-note').textContent = EDU_NOTES[attackType] || EDU_NOTES.brute_force;
+
+    // ===== CONFETTI =====
+    function spawnConfetti() {
+        const box = document.getElementById('confetti-box');
+        const colors = ['#22c55e', '#f59e0b', '#ef4444', '#3b82f6', '#a855f7', '#ec4899'];
+        for (let i = 0; i < 80; i++) {
+            const el = document.createElement('div');
+            el.className = 'confetti';
+            el.style.left = Math.random() * 100 + '%';
+            el.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+            el.style.width = (Math.random() * 8 + 5) + 'px';
+            el.style.height = (Math.random() * 8 + 5) + 'px';
+            el.style.borderRadius = Math.random() > 0.5 ? '50%' : '2px';
+            el.style.animationDuration = (Math.random() * 2 + 2) + 's';
+            el.style.animationDelay = (Math.random() * 1.5) + 's';
+            box.appendChild(el);
+        }
+        // Clean up after animation
+        setTimeout(() => { box.innerHTML = ''; }, 5000);
+    }
+    spawnConfetti();
+
+    function clearMission() {
+        sessionStorage.removeItem('mission_start');
+        sessionStorage.removeItem('mission_attack_type');
+        sessionStorage.removeItem('mission_attempts');
+        sessionStorage.removeItem('mission_blocked');
+        sessionStorage.removeItem('mission_recon_cmds');
+        sessionStorage.removeItem('mission_mode');
+    }
+</script>
+{% endblock %}

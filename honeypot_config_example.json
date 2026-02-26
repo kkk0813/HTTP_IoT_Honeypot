@@ -1,0 +1,19 @@
+{
+    "mode": "simulation",
+    "port": 5000,
+    "rate_limit_enabled": true,
+    "max_requests_per_ip": 100,
+    "auto_block_threshold": 90,
+    "api_key": "api_key",
+    "vendor": "Hikvision",
+    "admin_username": "admin",
+    "admin_password": "admin_password",
+    "lab_default_mode": "guided",
+    "lab_default_attack": "brute_force",
+    "lab_hint_delay": 8,
+    "lab_edu_panel_open": true,
+    "email_alerts_enabled": true,
+    "email_recipient": "recipient@gmail.com",
+    "email_smtp_address": "admin@gmail.com",
+    "email_smtp_password": "16-digit_password"
+}

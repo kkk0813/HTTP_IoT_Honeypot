@@ -1,0 +1,9 @@
+# Databases
+*.db
+
+# Python Cache
+__pycache__/
+
+# Credentials and Secrets
+.env
+honeypot_config.json

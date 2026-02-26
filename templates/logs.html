@@ -1,0 +1,788 @@
+{% extends "base.html" %}
+
+{% block title %}Attack Logs | IoT Honeypot{% endblock %}
+
+{% block content %}
+<main class="flex-1 p-10 overflow-y-auto relative">
+    <div class="fixed top-0 left-64 right-0 h-10 bg-gray-50 z-20"></div>
+    <div class="sticky top-0 z-30 bg-gray-50 pb-4">
+        <header class="flex justify-between items-end border-b pb-6 mb-6">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-900">Historical Attack Logs</h2>
+                <p class="text-gray-500 text-sm">Forensic deep-dive with advanced filtering. <span class="text-blue-600 font-medium">Click any row for details.</span></p>
+            </div>
+            
+            <div class="flex gap-3">
+                <div>
+                    <label class="text-[10px] font-bold text-gray-400 uppercase block mb-1">Data Source</label>
+                    <select id="filterSource" onchange="fetchLogs()" class="text-sm p-2 border rounded bg-white outline-none w-40 shadow-sm">
+                        <option value="all">All Sources</option>
+                        <option value="simulation">🎓 Simulation</option>
+                        <option value="internet">🌐 Internet</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-gray-400 uppercase block mb-1">Time Period</label>
+                    <select id="filterPeriod" onchange="fetchLogs()" class="text-sm p-2 border rounded bg-white outline-none w-40 shadow-sm">
+                        <option value="all">All Time</option>
+                        <option value="1h">Last 1 Hour</option>
+                        <option value="24h">Last 24 Hours</option>
+                        <option value="7d">Last 7 Days</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-gray-400 uppercase block mb-1">Attack Type</label>
+                    <select id="filterType" onchange="fetchLogs()" class="text-sm p-2 border rounded bg-white outline-none w-40 shadow-sm">
+                        <option value="all">All Types</option>
+                        <option value="Reconnaissance">Reconnaissance</option>
+                        <option value="Directory Enumeration">Directory Enumeration</option>
+                        <option value="Brute Force">Brute Force</option>
+                        <option value="SQL Injection">SQL Injection</option>
+                        <option value="Command Injection">Command Injection</option>
+                        <option value="XSS">XSS</option>
+                        <option value="Directory Traversal">Directory Traversal</option>
+                        <option value="Malicious Upload">Malicious Upload</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-[10px] font-bold text-gray-400 uppercase block mb-1">Search IP</label>
+                    <input type="text" id="logSearch" onkeyup="filterLogs()" placeholder="e.g. 192.168.1.1" 
+                        class="px-4 py-2 border rounded text-sm w-56 shadow-sm outline-none bg-white">
+                </div>
+            </div>
+        </header>
+
+        <!-- Security Filter Toggle -->
+        <div class="mb-6 p-5 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200 shadow-sm">
+            <div class="flex items-center justify-between">
+                <div class="flex-1">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="text-xl">🔍</span>
+                        <h4 class="font-bold text-blue-900">Security Filter</h4>
+                        <span id="filter-badge" class="hidden px-2 py-0.5 bg-green-500 text-white text-xs font-bold rounded-full animate-pulse">ACTIVE</span>
+                    </div>
+                    <p class="text-xs text-blue-700 leading-relaxed">
+                        Filter out background noise (favicon requests, robots.txt, CSS) to focus on malicious attacks. 
+                        Essential skill for SOC analysts in real-world threat hunting.
+                    </p>
+                    <div id="stats-row" class="hidden mt-3 flex gap-4 text-xs">
+                        <div class="flex items-center gap-2">
+                            <span class="text-blue-600 font-semibold">Total Events:</span>
+                            <span id="stat-total" class="font-mono font-bold text-gray-700">0</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-red-600 font-semibold">Malicious:</span>
+                            <span id="stat-malicious" class="font-mono font-bold text-red-700">0</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-gray-500 font-semibold">Noise:</span>
+                            <span id="stat-noise" class="font-mono font-bold text-gray-500">0</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-purple-600 font-semibold">Signal-to-Noise Ratio:</span>
+                            <span id="stat-ratio" class="font-mono font-bold text-purple-700">-</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Toggle Switch -->
+                <label class="relative inline-block w-14 h-7 ml-4">
+                    <input type="checkbox" id="security-filter" onchange="toggleSecurityFilter()" class="sr-only peer">
+                    <div class="w-full h-full bg-gray-300 rounded-full peer peer-checked:bg-green-500 transition-all duration-300 cursor-pointer shadow-inner"></div>
+                    <div class="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full transition-all duration-300 peer-checked:translate-x-7 shadow-md"></div>
+                    <span class="absolute top-1.5 left-8 text-[10px] font-bold text-gray-500 peer-checked:hidden">OFF</span>
+                    <span class="absolute top-1.5 left-1.5 text-[10px] font-bold text-white peer-checked:block hidden">ON</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- ================================================================ -->
+        <!-- EXPORT TOOLBAR (FR-9 + NFR-S2: IP Anonymization on Export)       -->
+        <!-- ================================================================ -->
+        <div class="mb-6 flex items-center justify-between bg-white rounded-xl border shadow-sm p-4">
+            <div class="flex items-center gap-3">
+                <span class="text-lg">📤</span>
+                <div>
+                    <h4 class="text-sm font-bold text-gray-900">Export Attack Data</h4>
+                    <p class="text-xs text-gray-500">Download filtered logs as CSV or JSON. Current filters apply to export.</p>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-4">
+                <!-- Anonymization Toggle -->
+                <div class="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+                    <label class="relative inline-block w-10 h-5">
+                        <input type="checkbox" id="anonymize-toggle" class="sr-only peer">
+                        <div class="w-full h-full bg-gray-300 rounded-full peer peer-checked:bg-amber-500 transition-all cursor-pointer"></div>
+                        <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-5 shadow"></div>
+                    </label>
+                    <div>
+                        <span class="text-xs font-bold text-amber-800">Anonymize IPs</span>
+                        <p class="text-[10px] text-amber-600 leading-tight">Mask last octet for research sharing</p>
+                    </div>
+                </div>
+
+                <!-- Export Buttons -->
+                <button onclick="exportData('csv')"
+                        class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
+                    <span>📊</span> Export CSV
+                </button>
+                <button onclick="exportData('json')"
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
+                    <span>📋</span> Export JSON
+                </button>
+            </div>
+        </div>
+
+        <!-- Fixed Table Header -->
+        <div class="bg-gray-100 rounded-t-xl border-x border-t shadow-sm">
+            <table class="w-full text-left text-xs table-fixed">
+                <colgroup>
+                    <col class="w-[15%]"> <col class="w-[14%]"> <col class="w-[22%]">
+                    <col class="w-[12%]"> <col class="w-[8%]"> <col class="w-[10%]"> <col class="w-[14%]">
+                </colgroup>
+                <thead class="text-gray-500 uppercase font-bold">
+                    <tr>
+                        <th class="p-4">Timestamp</th>
+                        <th class="p-4">Source IP</th>
+                        <th class="p-4">Classification</th>
+                        <th class="p-4 text-center">Target Vendor</th>
+                        <th class="p-4 text-center">Score</th>
+                        <th class="p-4 text-center">Source</th>
+                        <th class="p-4 text-right">Origin</th>
+                    </tr>
+                </thead>
+            </table>
+        </div>
+    </div>
+
+    <!-- Scrollable Table Body -->
+    <div class="bg-white border-x border-b rounded-b-xl shadow-sm overflow-hidden mb-10">
+        <table class="w-full text-left text-sm table-fixed">
+            <colgroup>
+                <col class="w-[15%]"> <col class="w-[14%]"> <col class="w-[22%]">
+                <col class="w-[12%]"> <col class="w-[8%]"> <col class="w-[10%]"> <col class="w-[14%]">
+            </colgroup>
+            <tbody id="full-log-table" class="divide-y divide-gray-100">
+                <tr>
+                    <td colspan="7" class="p-10 text-center text-gray-400">
+                        <div class="text-2xl mb-2">📋</div>
+                        Loading logs...
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</main>
+
+<!-- ============================================================================ -->
+<!-- ATTACK DETAIL MODAL                                                          -->
+<!-- ============================================================================ -->
+<div id="attack-modal" class="fixed inset-0 bg-black/50 z-50 hidden items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[95vh] overflow-hidden flex flex-col my-4">
+        <!-- Modal Header -->
+        <div id="modal-header" class="bg-gradient-to-r from-red-600 to-orange-500 px-6 py-4 text-white flex-shrink-0">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <span id="modal-icon" class="text-3xl">🔑</span>
+                    <div>
+                        <h3 id="modal-title" class="font-bold text-lg">Attack Details</h3>
+                        <p id="modal-subtitle" class="text-sm text-white/80">MITRE ATT&CK Analysis</p>
+                    </div>
+                </div>
+                <button onclick="closeModal()" class="text-white/80 hover:text-white text-2xl font-bold">&times;</button>
+            </div>
+        </div>
+        
+        <!-- Modal Body -->
+        <div class="flex-1 overflow-y-auto p-6">
+            <!-- Attack Summary -->
+            <div class="grid grid-cols-5 gap-4 mb-6">
+                <div class="bg-gray-50 rounded-lg p-3 text-center">
+                    <div class="text-[10px] text-gray-500 uppercase font-bold">Attack ID</div>
+                    <div id="detail-id" class="font-mono font-bold text-gray-900">#--</div>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3 text-center">
+                    <div class="text-[10px] text-gray-500 uppercase font-bold">Source IP</div>
+                    <div id="detail-ip" class="font-mono font-bold text-gray-900">--</div>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3 text-center">
+                    <div class="text-[10px] text-gray-500 uppercase font-bold">Abuse Score</div>
+                    <div id="detail-score" class="font-bold text-red-600">--</div>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3 text-center">
+                    <div class="text-[10px] text-gray-500 uppercase font-bold">Origin</div>
+                    <div id="detail-country" class="font-bold">--</div>
+                </div>
+                <div class="bg-gray-50 rounded-lg p-3 text-center">
+                    <div class="text-[10px] text-gray-500 uppercase font-bold">Data Source</div>
+                    <div id="detail-source" class="font-bold">--</div>
+                </div>
+            </div>
+            
+            <!-- ============================================================ -->
+            <!-- PACKET VISUALIZATION - NEW!                                   -->
+            <!-- ============================================================ -->
+            <div class="mb-6 bg-gray-900 rounded-xl overflow-hidden">
+                <div class="bg-gray-800 px-4 py-2 flex items-center gap-2 border-b border-gray-700">
+                    <span class="text-lg">📡</span>
+                    <h4 class="font-bold text-white text-sm">Captured HTTP Request</h4>
+                    <span class="text-[10px] text-gray-400 ml-auto">Application Layer (L7)</span>
+                </div>
+                <div class="p-4 font-mono text-xs">
+                    <!-- Request Line -->
+                    <div class="text-yellow-400 mb-2">
+                        <span id="pkt-method" class="font-bold">POST</span>
+                        <span id="pkt-path" class="text-white ml-2">/login</span>
+                        <span class="text-gray-500 ml-2">HTTP/1.1</span>
+                    </div>
+                    
+                    <!-- Headers -->
+                    <div class="text-gray-400 border-l-2 border-gray-700 pl-3 mb-3 space-y-0.5">
+                        <div><span class="text-cyan-400">Host:</span> <span id="pkt-host" class="text-white">honeypot:80</span></div>
+                        <div><span class="text-cyan-400">User-Agent:</span> <span id="pkt-agent" class="text-green-400">Interactive-Lab/1.0</span></div>
+                        <div><span class="text-cyan-400">Content-Type:</span> <span class="text-white">application/json</span></div>
+                        <div><span class="text-cyan-400">Content-Length:</span> <span id="pkt-length" class="text-white">--</span></div>
+                        <div><span class="text-cyan-400">X-Forwarded-For:</span> <span id="pkt-xff" class="text-orange-400">--</span></div>
+                        <div><span class="text-cyan-400">Connection:</span> <span class="text-white">keep-alive</span></div>
+                    </div>
+                    
+                    <!-- Empty Line (HTTP separator) -->
+                    <div class="text-gray-600 mb-2">--- Request Body ---</div>
+                    
+                    <!-- Payload Body -->
+                    <div class="bg-black/40 p-3 rounded border border-gray-700">
+                        <pre id="pkt-body" class="text-green-400 whitespace-pre-wrap break-all">{"username": "admin", "password": "admin"}</pre>
+                    </div>
+                    
+                    <!-- Packet Metadata -->
+                    <div class="mt-3 pt-3 border-t border-gray-700 grid grid-cols-3 gap-4 text-[10px]">
+                        <div>
+                            <span class="text-gray-500">Timestamp:</span>
+                            <span id="pkt-time" class="text-gray-300 ml-1">--</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-500">Source:</span>
+                            <span id="pkt-src" class="text-orange-400 ml-1">--:ephemeral</span>
+                        </div>
+                        <div>
+                            <span class="text-gray-500">Destination:</span>
+                            <span id="pkt-dst" class="text-blue-400 ml-1">honeypot:80</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- MITRE ATT&CK Mapping -->
+            <div class="mb-6 p-4 bg-purple-50 border-2 border-purple-200 rounded-xl">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="text-xl">🎯</span>
+                    <h4 class="font-bold text-purple-900">MITRE ATT&CK Mapping</h4>
+                </div>
+                <div class="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                        <div class="text-[10px] text-purple-600 uppercase font-bold">Technique ID</div>
+                        <div id="mitre-id" class="font-mono font-bold text-purple-900">--</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-purple-600 uppercase font-bold">Technique Name</div>
+                        <div id="mitre-name" class="font-bold text-purple-900">--</div>
+                    </div>
+                    <div>
+                        <div class="text-[10px] text-purple-600 uppercase font-bold">Tactic</div>
+                        <div id="mitre-tactic" class="font-bold text-purple-900">--</div>
+                    </div>
+                </div>
+                <div class="mt-3 pt-3 border-t border-purple-200">
+                    <div class="text-[10px] text-purple-600 uppercase font-bold mb-1">Description</div>
+                    <p id="mitre-desc" class="text-sm text-purple-800">--</p>
+                </div>
+            </div>
+            
+            <!-- Attack Story -->
+            <div class="mb-6 p-4 bg-amber-50 border-2 border-amber-200 rounded-xl">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="text-xl">📖</span>
+                    <h4 class="font-bold text-amber-900">Attack Story</h4>
+                </div>
+                <div id="attack-story" class="text-sm text-amber-800 space-y-2">
+                    <!-- Dynamically populated -->
+                </div>
+            </div>
+            
+            <!-- Defense Recommendations -->
+            <div class="p-4 bg-green-50 border-2 border-green-200 rounded-xl">
+                <div class="flex items-center gap-2 mb-3">
+                    <span class="text-xl">🛡️</span>
+                    <h4 class="font-bold text-green-900">Defense Recommendations</h4>
+                </div>
+                <ul id="defense-tips" class="text-sm text-green-800 space-y-2">
+                    <!-- Dynamically populated -->
+                </ul>
+            </div>
+        </div>
+        
+        <!-- Modal Footer -->
+        <div class="border-t px-6 py-4 bg-gray-50 flex justify-between items-center flex-shrink-0">
+            <a id="mitre-link" href="#" target="_blank" class="text-sm text-purple-600 hover:underline">
+                🔗 View on MITRE ATT&CK
+            </a>
+            <button onclick="closeModal()" class="px-4 py-2 bg-gray-200 hover:bg-gray-300 rounded-lg text-sm font-bold transition-colors">
+                Close
+            </button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let allLogs = [];
+    let rawLogsWithNoise = [];
+    let securityFilterEnabled = false;
+
+    // 1. Native Browser API for Country Names (No list needed!)
+    const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
+
+    // 2. Function to auto-generate flag emojis from country code (e.g. 'US' -> 🇺🇸)
+    function getFlagEmoji(countryCode) {
+        if (!countryCode || countryCode === 'Local') return '🏠'; // Special case for local
+        if (countryCode === 'Unknown') return '🌐';
+        
+        // Magic math: converts letters 'A'-'Z' into Regional Indicator Symbols 🇦-🇿
+        return countryCode.toUpperCase().replace(/./g, char => 
+            String.fromCodePoint(char.charCodeAt(0) + 127397)
+        );
+    }
+
+    // 3. Helper to safely get full name
+    function getCountryName(code) {
+        try {
+            if (code === 'Local') return 'Internal Network';
+            return regionNames.of(code);
+        } catch (e) {
+            return code; // Fallback to "US" if name lookup fails
+        }
+    }
+
+    // MITRE ATT&CK Knowledge Base
+    const mitreKnowledge = {
+        'T1110': {
+            id: 'T1110',
+            name: 'Brute Force',
+            tactic: 'Credential Access',
+            description: 'Adversaries may use brute force techniques to attempt access to accounts when passwords are unknown. This includes password guessing, credential stuffing, and using default credentials commonly found in IoT devices.',
+            url: 'https://attack.mitre.org/techniques/T1110/',
+            icon: '🔑',
+            color: 'orange',
+            defenses: [
+                '✓ Change default credentials immediately after device setup',
+                '✓ Implement account lockout after 3-5 failed attempts',
+                '✓ Use strong passwords (12+ characters, mixed case, numbers, symbols)',
+                '✓ Enable multi-factor authentication where supported',
+                '✓ Monitor for multiple failed login attempts from same IP'
+            ],
+            story: (data) => [
+                `<strong>1. Reconnaissance:</strong> The attacker identified your IoT device (${data.vendor || 'Generic'}) as a potential target, likely through internet scanning services like Shodan or Censys.`,
+                `<strong>2. Weaponization:</strong> Armed with a list of common default credentials (admin/admin, root/root, etc.), the attacker prepared an automated credential stuffing attack.`,
+                `<strong>3. Attack Execution:</strong> From IP <code class="bg-gray-200 px-1 rounded">${data.ip}</code> (${getFlagEmoji(data.country)} ${getCountryName(data.country)}), the attacker submitted: <code class="bg-red-100 px-1 rounded">${formatPayloadBrief(data.payload)}</code>`,
+                `<strong>4. Honeypot Response:</strong> The honeypot captured this attempt, logging the credentials and source information while appearing to be a real vulnerable device.`,
+                `<strong>5. Threat Intelligence:</strong> IP reputation score of <strong>${data.score}%</strong> indicates ${data.score >= 75 ? 'a <span class="text-red-600">known malicious actor</span> with history of attacks' : data.score >= 50 ? 'a <span class="text-orange-600">suspicious source</span> with some reported activity' : 'a <span class="text-yellow-600">relatively new or clean source</span>'}.`
+            ]
+        },
+        'T1190': {
+            id: 'T1190',
+            name: 'Exploit Public-Facing Application',
+            tactic: 'Initial Access',
+            description: 'Adversaries may attempt to exploit vulnerabilities in internet-facing systems. SQL injection is a critical vulnerability that allows attackers to manipulate database queries through unsanitized user input, potentially bypassing authentication or extracting sensitive data.',
+            url: 'https://attack.mitre.org/techniques/T1190/',
+            icon: '💉',
+            color: 'red',
+            defenses: [
+                '✓ Use parameterized queries / prepared statements (NEVER concatenate user input)',
+                '✓ Implement strict input validation and sanitization on all user inputs',
+                '✓ Apply principle of least privilege to database accounts',
+                '✓ Deploy a Web Application Firewall (WAF) to detect injection patterns',
+                '✓ Regular security audits, code review, and penetration testing'
+            ],
+            story: (data) => [
+                `<strong>1. Target Selection:</strong> The attacker identified a login form on your ${data.vendor || 'Generic'} device that accepts user input, making it a potential SQL injection target.`,
+                `<strong>2. Payload Crafting:</strong> A SQL injection payload was crafted to manipulate the backend query. The goal: bypass authentication by making the WHERE clause always evaluate to TRUE.`,
+                `<strong>3. Attack Execution:</strong> From IP <code class="bg-gray-200 px-1 rounded">${data.ip}</code> (${getFlagEmoji(data.country)} ${getCountryName(data.country)}), the attacker injected: <code class="bg-red-100 px-1 rounded text-red-800">${formatPayloadBrief(data.payload)}</code>`,
+                `<strong>4. How It Works:</strong> The payload <code>' OR 1=1 --</code> attempts to close the username string, add an always-true condition (1=1), and comment out the password check (--).`,
+                `<strong>5. Severity:</strong> SQL injection is rated <strong class="text-red-600">CRITICAL (CVSS 9.8)</strong>. If successful, attackers could bypass authentication, extract database contents, or execute system commands.`
+            ]
+        },
+        'T1059': {
+            id: 'T1059',
+            name: 'Command and Scripting Interpreter',
+            tactic: 'Execution',
+            description: 'Adversaries may abuse command interpreters to execute commands. Command injection occurs when user input is passed unsafely to system shell functions, allowing arbitrary command execution on the target system.',
+            url: 'https://attack.mitre.org/techniques/T1059/',
+            icon: '⚡',
+            color: 'purple',
+            defenses: [
+                '✓ Never pass user input directly to shell commands',
+                '✓ Use parameterized APIs instead of shell execution',
+                '✓ Implement strict input whitelisting (not blacklisting)',
+                '✓ Run applications with minimal privileges',
+                '✓ Use containerization to limit blast radius'
+            ],
+            story: (data) => [
+                `<strong>1. Vulnerability Discovery:</strong> The attacker identified that your ${data.vendor || 'Generic'} device passes user input to system commands without proper sanitization.`,
+                `<strong>2. Payload Construction:</strong> A command injection payload was crafted using shell metacharacters to break out of the intended command context.`,
+                `<strong>3. Attack Vector:</strong> Characters like <code>;</code>, <code>|</code>, <code>$()</code>, or backticks allow chaining additional commands.`,
+                `<strong>4. Attack Execution:</strong> From <code class="bg-gray-200 px-1 rounded">${data.ip}</code>, payload: <code class="bg-red-100 px-1 rounded">${formatPayloadBrief(data.payload)}</code>`,
+                `<strong>5. Impact:</strong> Successful command injection grants <strong class="text-red-600">FULL SYSTEM ACCESS</strong> - attackers can install backdoors, exfiltrate data, or pivot to internal networks.`
+            ]
+        },
+        'T1595': {
+            id: 'T1595',
+            name: 'Active Scanning',
+            tactic: 'Reconnaissance',
+            description: 'Adversaries may scan victim infrastructure to gather information for targeting. This includes port scanning, vulnerability scanning, and service enumeration to identify potential attack vectors.',
+            url: 'https://attack.mitre.org/techniques/T1595/',
+            icon: '🔍',
+            color: 'blue',
+            defenses: [
+                '✓ Implement network segmentation and firewalls',
+                '✓ Deploy intrusion detection systems (IDS/IPS)',
+                '✓ Monitor for unusual scanning patterns in logs',
+                '✓ Minimize exposed services to only what\'s necessary',
+                '✓ Keep all services patched and updated'
+            ],
+            story: (data) => [
+                `<strong>1. Discovery Phase:</strong> The attacker is probing your network to map the attack surface and identify running services.`,
+                `<strong>2. Information Gathering:</strong> Requests to paths like <code class="bg-gray-200 px-1 rounded">${data.path || '/'}</code> help identify technologies, versions, and misconfigurations.`,
+                `<strong>3. Tool Identification:</strong> User agent <code class="bg-gray-200 px-1 rounded">${data.agent || 'Unknown'}</code> suggests ${identifyScanner(data.agent)}.`,
+                `<strong>4. Attack Chain Position:</strong> Reconnaissance is the first step in the cyber kill chain - information gathered here informs subsequent attack phases.`,
+                `<strong>5. Next Steps:</strong> Data collected may be used to plan targeted brute force attempts, exploit known vulnerabilities, or craft phishing campaigns.`
+            ]
+        }
+    };
+
+    function identifyScanner(agent) {
+        if (!agent) return 'unknown scanning tool';
+        if (agent.includes('Nmap')) return '<span class="text-red-600">Nmap</span> - a powerful network scanner';
+        if (agent.includes('Shodan')) return '<span class="text-orange-600">Shodan</span> - IoT search engine';
+        if (agent.includes('Censys')) return '<span class="text-orange-600">Censys</span> - internet-wide scanner';
+        if (agent.includes('zgrab')) return '<span class="text-orange-600">ZGrab</span> - application layer scanner';
+        if (agent.includes('curl')) return '<span class="text-yellow-600">curl</span> - command-line HTTP tool';
+        if (agent.includes('python')) return '<span class="text-yellow-600">Python script</span> - automated scanner';
+        return 'automated scanning tool';
+    }
+
+    function formatPayloadBrief(payloadStr) {
+        if (!payloadStr) return 'N/A';
+        try {
+            // Handle both JSON string and object
+            const p = typeof payloadStr === 'string' ? JSON.parse(payloadStr.replace(/'/g, '"')) : payloadStr;
+            if (p.username !== undefined) {
+                const pass = p.password || '(empty)';
+                return `${p.username} / ${pass}`;
+            }
+            return JSON.stringify(p);
+        } catch {
+            return payloadStr;
+        }
+    }
+
+    function formatPayloadFull(payloadStr) {
+        if (!payloadStr) return '{ }';
+        try {
+            const p = typeof payloadStr === 'string' ? JSON.parse(payloadStr.replace(/'/g, '"')) : payloadStr;
+            return JSON.stringify(p, null, 2);
+        } catch {
+            return payloadStr;
+        }
+    }
+
+    function toggleSecurityFilter() {
+        securityFilterEnabled = document.getElementById('security-filter').checked;
+        
+        const badge = document.getElementById('filter-badge');
+        const statsRow = document.getElementById('stats-row');
+        
+        if (securityFilterEnabled) {
+            badge.classList.remove('hidden');
+            statsRow.classList.remove('hidden');
+        } else {
+            badge.classList.add('hidden');
+            statsRow.classList.add('hidden');
+        }
+        
+        fetchLogs();
+    }
+
+    // ============================================================================
+    // EXPORT FUNCTION (FR-9 + NFR-S2: IP Anonymization on Export)
+    // ============================================================================
+    function exportData(format) {
+        const period   = document.getElementById('filterPeriod').value;
+        const type     = document.getElementById('filterType').value;
+        const source   = document.getElementById('filterSource').value;
+        const noise    = !securityFilterEnabled;
+        const anonymize = document.getElementById('anonymize-toggle').checked;
+
+        const params = new URLSearchParams({
+            period: period, type: type, include_noise: noise, anonymize: anonymize
+        });
+        if (source !== 'all') params.set('source', source);
+
+        // Trigger browser file download
+        window.location.href = `/api/export/${format}?${params.toString()}`;
+    }
+
+    function fetchLogs() {
+        const period = document.getElementById('filterPeriod').value;
+        const type = document.getElementById('filterType').value;
+        const source = document.getElementById('filterSource').value;
+        const includeNoise = !securityFilterEnabled;
+        
+        const sourceParam = source !== 'all' ? `&source=${source}` : '';
+        
+        fetch(`/api/all_logs?period=${period}&type=${type}&include_noise=${includeNoise}${sourceParam}`)
+            .then(res => res.json())
+            .then(data => {
+                allLogs = data;
+                
+                if (securityFilterEnabled) {
+                    fetch(`/api/all_logs?period=${period}&type=${type}&include_noise=true${sourceParam}`)
+                        .then(res => res.json())
+                        .then(dataWithNoise => {
+                            rawLogsWithNoise = dataWithNoise;
+                            updateStatistics();
+                            filterLogs();
+                        });
+                } else {
+                    filterLogs();
+                }
+            });
+    }
+
+    function updateStatistics() {
+        const total = rawLogsWithNoise.length;
+        const noise = rawLogsWithNoise.filter(l => l.score < 50 && !l.type.includes('T1')).length;
+        const malicious = total - noise;
+        const ratio = noise > 0 ? (malicious / noise).toFixed(2) : malicious;
+        
+        document.getElementById('stat-total').textContent = total;
+        document.getElementById('stat-malicious').textContent = malicious;
+        document.getElementById('stat-noise').textContent = noise;
+        document.getElementById('stat-ratio').textContent = ratio + ':1';
+    }
+
+    function renderTable(data) {
+        const table = document.getElementById('full-log-table');
+        
+        if (data.length === 0) {
+            const message = securityFilterEnabled 
+                ? "🎯 No malicious attacks found. All noise filtered out!"
+                : "📭 No logs found matching your filters.";
+            
+            table.innerHTML = `
+                <tr>
+                    <td colspan="7" class="p-10 text-center text-gray-400">
+                        <div class="text-2xl mb-2">🔍</div>
+                        ${message}
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        table.innerHTML = data.map((l, index) => {
+            const isNoise = l.score < 50 && !l.type.includes('T1');
+            const rowClass = isNoise ? 'bg-gray-50 opacity-70' : '';
+            const countryEmoji = getFlagEmoji(l.country);
+            const countryName = getCountryName(l.country);
+            const countryDisplay = `${countryEmoji} ${countryName}`;
+            
+            let badgeClass, badgeIcon;
+            
+            if (isNoise) {
+                if (l.type === 'Browser Request') {
+                    badgeClass = 'bg-blue-100 text-blue-600 px-2 py-1 rounded text-xs font-medium';
+                    badgeIcon = '🌐';
+                } else if (l.type === 'Search Crawler') {
+                    badgeClass = 'bg-green-100 text-green-600 px-2 py-1 rounded text-xs font-medium';
+                    badgeIcon = '🤖';
+                } else if (l.type === 'Security Scanner') {
+                    badgeClass = 'bg-yellow-100 text-yellow-700 px-2 py-1 rounded text-xs font-medium';
+                    badgeIcon = '🔍';
+                } else if (l.type === 'Health Check') {
+                    badgeClass = 'bg-cyan-100 text-cyan-600 px-2 py-1 rounded text-xs font-medium';
+                    badgeIcon = '💓';
+                } else if (l.type === 'IoT Misconfiguration') {
+                    badgeClass = 'bg-purple-100 text-purple-600 px-2 py-1 rounded text-xs font-medium';
+                    badgeIcon = '⚙️';
+                } else {
+                    badgeClass = 'bg-gray-200 text-gray-500 px-2 py-1 rounded text-xs font-medium';
+                    badgeIcon = '🔇';
+                }
+            } else {
+                if (l.type.includes('SQL')) {
+                    badgeClass = 'bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold';
+                    badgeIcon = '💉';
+                } else if (l.type.includes('Brute')) {
+                    badgeClass = 'bg-orange-100 text-orange-700 px-2 py-1 rounded text-xs font-bold';
+                    badgeIcon = '🔑';
+                } else if (l.type.includes('Command')) {
+                    badgeClass = 'bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-bold';
+                    badgeIcon = '⚡';
+                } else {
+                    badgeClass = 'bg-gray-100 px-2 py-1 rounded text-xs font-medium';
+                    badgeIcon = '⚠️';
+                }
+            }
+            
+            return `
+                <tr class="hover:bg-blue-50 transition-colors cursor-pointer ${rowClass}" onclick="showAttackDetail(${index})">
+                    <td class="p-4 font-mono text-gray-500 text-xs">${l.time.replace('T', ' ').substring(0,19)}</td>
+                    <td class="p-4 font-bold text-gray-900">${l.ip}</td>
+                    <td class="p-4">
+                        <span class="${badgeClass}">
+                            ${badgeIcon} ${l.type}
+                        </span>
+                    </td>
+                    <td class="p-4 text-center text-gray-600 italic text-xs">${l.vendor || 'Generic'}</td>
+                    <td class="p-4 text-center">
+                        <span class="px-2 py-1 rounded font-bold text-xs ${
+                            isNoise 
+                                ? l.score >= 5 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-200 text-gray-500'
+                                : l.score >= 75 
+                                    ? 'bg-red-100 text-red-900' 
+                                    : 'bg-orange-50 text-orange-700'
+                        }">
+                            ${l.score}
+                        </span>
+                    </td>
+                    <td class="p-4 text-center">
+                        <span class="px-2 py-0.5 rounded text-[10px] font-bold ${
+                            l.source === 'internet' 
+                                ? 'bg-red-100 text-red-700' 
+                                : 'bg-blue-100 text-blue-700'
+                        }">${l.source === 'internet' ? '🌐 INTERNET' : '🎓 SIM'}</span>
+                    </td>
+                    <td class="p-4 text-right font-medium text-xs">
+                        ${countryDisplay}
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function filterLogs() {
+        const query = document.getElementById('logSearch').value.toLowerCase();
+        const filtered = allLogs.filter(l => 
+            l.ip.toLowerCase().includes(query) || 
+            l.type.toLowerCase().includes(query) ||
+            (l.vendor && l.vendor.toLowerCase().includes(query))
+        );
+        renderTable(filtered);
+    }
+
+    // ============================================================================
+    // MODAL FUNCTIONS
+    // ============================================================================
+    
+    function showAttackDetail(index) {
+        const data = allLogs[index];
+        if (!data) return;
+        
+        // Determine MITRE technique from attack type
+        let mitreKey = 'T1110'; // Default to brute force
+        if (data.type.includes('SQL') || data.type.includes('T1190')) mitreKey = 'T1190';
+        else if (data.type.includes('Command') || data.type.includes('T1059')) mitreKey = 'T1059';
+        else if (data.type.includes('Recon') || data.type.includes('Scanner') || data.type.includes('T1595')) mitreKey = 'T1595';
+        
+        const mitre = mitreKnowledge[mitreKey] || mitreKnowledge['T1110'];
+        
+        // Update modal header color based on attack type
+        const headerEl = document.getElementById('modal-header');
+        headerEl.className = `bg-gradient-to-r px-6 py-4 text-white flex-shrink-0 `;
+        if (mitre.color === 'red') headerEl.classList.add('from-red-600', 'to-red-500');
+        else if (mitre.color === 'orange') headerEl.classList.add('from-orange-600', 'to-orange-500');
+        else if (mitre.color === 'purple') headerEl.classList.add('from-purple-600', 'to-purple-500');
+        else headerEl.classList.add('from-blue-600', 'to-blue-500');
+        
+        document.getElementById('modal-icon').textContent = mitre.icon;
+        document.getElementById('modal-title').textContent = data.type;
+        document.getElementById('modal-subtitle').textContent = `MITRE ATT&CK: ${mitre.id} - ${mitre.name}`;
+        
+        // Update summary - FIX: Use correct field name 'id'
+        document.getElementById('detail-id').textContent = `#${data.id || 'N/A'}`;
+        document.getElementById('detail-ip').textContent = data.ip;
+        document.getElementById('detail-score').textContent = `${data.score}%`;
+        document.getElementById('detail-score').className = `font-bold ${data.score >= 75 ? 'text-red-600' : data.score >= 50 ? 'text-orange-600' : 'text-yellow-600'}`;
+        document.getElementById('detail-country').textContent = `${getFlagEmoji(data.country)} ${getCountryName(data.country)}`;
+        
+        // Update source badge
+        const sourceEl = document.getElementById('detail-source');
+        if (data.source === 'internet') {
+            sourceEl.innerHTML = '<span class="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-bold">🌐 INTERNET</span>';
+        } else {
+            sourceEl.innerHTML = '<span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-bold">🎓 SIMULATION</span>';
+        }
+        
+        // Update MITRE mapping
+        document.getElementById('mitre-id').textContent = mitre.id;
+        document.getElementById('mitre-name').textContent = mitre.name;
+        document.getElementById('mitre-tactic').textContent = mitre.tactic;
+        document.getElementById('mitre-desc').textContent = mitre.description;
+        document.getElementById('mitre-link').href = mitre.url;
+        
+        // ============================================================
+        // UPDATE PACKET VISUALIZATION - FIX: Use correct field names
+        // ============================================================
+        const payloadFormatted = formatPayloadFull(data.payload);
+        const payloadLength = payloadFormatted.length;
+        
+        document.getElementById('pkt-method').textContent = data.method || 'POST';
+        document.getElementById('pkt-path').textContent = data.path || '/login';
+        document.getElementById('pkt-host').textContent = `honeypot:80`;
+        document.getElementById('pkt-agent').textContent = data.agent || 'Unknown';
+        document.getElementById('pkt-length').textContent = payloadLength;
+        document.getElementById('pkt-xff').textContent = data.ip;
+        document.getElementById('pkt-body').textContent = payloadFormatted;
+        document.getElementById('pkt-time').textContent = data.time?.replace('T', ' ').substring(0,19) || '--';
+        document.getElementById('pkt-src').textContent = `${data.ip}:ephemeral`;
+        
+        // Generate attack story
+        const story = mitre.story(data);
+        document.getElementById('attack-story').innerHTML = story.map(s => `<p class="leading-relaxed">${s}</p>`).join('');
+        
+        // Update defense tips
+        document.getElementById('defense-tips').innerHTML = mitre.defenses.map(d => `<li>${d}</li>`).join('');
+        
+        // Show modal
+        const modal = document.getElementById('attack-modal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        document.body.style.overflow = 'hidden';
+    }
+    
+    function closeModal() {
+        const modal = document.getElementById('attack-modal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        document.body.style.overflow = '';
+    }
+    
+    // Close modal on escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') closeModal();
+    });
+    
+    // Close modal on backdrop click
+    document.getElementById('attack-modal').addEventListener('click', (e) => {
+        if (e.target.id === 'attack-modal') closeModal();
+    });
+
+    // Initial load
+    fetchLogs();
+    
+    // Auto-refresh every 10 seconds
+    setInterval(fetchLogs, 10000);
+</script>
+{% endblock %}

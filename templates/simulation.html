@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}Simulation Lab | IoT Honeypot{% endblock %}
+
+{% block content %}
+<div class="flex-1 p-8 overflow-y-auto">
+    <header class="mb-8">
+        <div class="flex items-center justify-between">
+            <div>
+                <h2 class="text-3xl font-bold text-gray-900">Attack Simulation Laboratory</h2>
+                <p class="text-gray-500 text-sm mt-2">Experience the full cyber kill chain or practice individual attack techniques</p>
+            </div>
+            <div class="px-4 py-2 bg-green-50 text-green-700 rounded-lg font-semibold text-sm border-2 border-green-200">
+                <span class="inline-block w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse"></span>Lab Ready
+            </div>
+        </div>
+    </header>
+
+    <!-- ===== MISSION MODE ===== -->
+    <div class="mb-8 bg-gradient-to-br from-gray-900 to-slate-800 rounded-2xl border-2 border-amber-500/30 shadow-2xl overflow-hidden">
+        <div class="p-8 flex items-start gap-6">
+            <div class="flex-1">
+                <div class="flex items-center gap-3 mb-3">
+                    <span class="text-4xl">🎯</span>
+                    <div>
+                        <h3 class="text-2xl font-black text-white">Mission Mode</h3>
+                        <p class="text-amber-400 text-sm font-semibold">Full Cyber Kill Chain Simulation</p>
+                    </div>
+                </div>
+                <p class="text-gray-300 text-sm leading-relaxed mb-5">
+                    Experience a complete hacking scenario from reconnaissance to exploitation. Scan the target, choose your weapon,
+                    exploit the vulnerability, and see if you can compromise the IoT device — all in a safe, guided environment.
+                </p>
+                <div class="grid grid-cols-4 gap-3 mb-6">
+                    <div class="bg-white/5 border border-white/10 rounded-lg p-3 text-center">
+                        <div class="text-xl mb-1">🔍</div>
+                        <div class="text-[10px] font-bold text-gray-300">PHASE 1</div>
+                        <div class="text-xs text-white font-semibold">Recon</div>
+                    </div>
+                    <div class="bg-white/5 border border-white/10 rounded-lg p-3 text-center">
+                        <div class="text-xl mb-1">⚙️</div>
+                        <div class="text-[10px] font-bold text-gray-300">PHASE 2</div>
+                        <div class="text-xs text-white font-semibold">Weaponize</div>
+                    </div>
+                    <div class="bg-white/5 border border-white/10 rounded-lg p-3 text-center">
+                        <div class="text-xl mb-1">💥</div>
+                        <div class="text-[10px] font-bold text-gray-300">PHASE 3</div>
+                        <div class="text-xs text-white font-semibold">Exploit</div>
+                    </div>
+                    <div class="bg-white/5 border border-white/10 rounded-lg p-3 text-center">
+                        <div class="text-xl mb-1">🏆</div>
+                        <div class="text-[10px] font-bold text-gray-300">PHASE 4</div>
+                        <div class="text-xs text-white font-semibold">Success</div>
+                    </div>
+                </div>
+                <a href="/lab/mission/recon" class="inline-block bg-gradient-to-r from-amber-500 to-orange-500 text-black px-8 py-3 rounded-lg font-black text-lg hover:from-amber-400 hover:to-orange-400 transition-all shadow-lg hover:shadow-xl hover:scale-105">
+                    🚀 Start Mission
+                </a>
+            </div>
+            <div class="w-56 flex-shrink-0 bg-white/5 border border-white/10 rounded-xl p-4">
+                <div class="text-xs font-bold text-amber-400 uppercase mb-3">📖 What You'll Learn</div>
+                <div class="space-y-2 text-xs text-gray-300">
+                    <div class="flex items-start gap-2"><span class="text-green-400 mt-0.5">✓</span><span>Network recon with Nmap</span></div>
+                    <div class="flex items-start gap-2"><span class="text-green-400 mt-0.5">✓</span><span>HTTP fingerprinting with cURL</span></div>
+                    <div class="flex items-start gap-2"><span class="text-green-400 mt-0.5">✓</span><span>Attack tool usage (Hydra, SQLmap)</span></div>
+                    <div class="flex items-start gap-2"><span class="text-green-400 mt-0.5">✓</span><span>Web exploitation techniques</span></div>
+                    <div class="flex items-start gap-2"><span class="text-green-400 mt-0.5">✓</span><span>MITRE ATT&CK mapping</span></div>
+                    <div class="flex items-start gap-2"><span class="text-green-400 mt-0.5">✓</span><span>Active defense countermeasures</span></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== PRACTICE LABS ===== -->
+    <div class="mb-8">
+        <h3 class="text-xl font-bold text-gray-900 mb-1">Practice Labs</h3>
+        <p class="text-sm text-gray-500 mb-4">Jump directly into a specific attack technique — Guided tutorial or Sandbox mode</p>
+        <div class="grid grid-cols-3 gap-4">
+            <a href="/lab/brute_force" class="block bg-white rounded-xl border-2 border-gray-200 shadow-md hover:shadow-xl hover:border-orange-300 transition-all p-5 group">
+                <div class="flex items-center gap-3 mb-3">
+                    <div class="p-2 bg-orange-100 rounded-lg group-hover:scale-110 transition-transform"><span class="text-2xl">🔑</span></div>
+                    <div>
+                        <h4 class="font-bold text-gray-900">Credential Brute Force</h4>
+                        <span class="text-[10px] font-semibold text-orange-600">T1110 · Credential Access</span>
+                    </div>
+                    <span class="ml-auto px-2 py-0.5 bg-orange-100 text-orange-700 text-[10px] font-bold rounded">MEDIUM</span>
+                </div>
+                <p class="text-xs text-gray-600">Try default IoT credentials and watch how honeypots detect password guessing attacks.</p>
+            </a>
+            <a href="/lab/sqli" class="block bg-white rounded-xl border-2 border-gray-200 shadow-md hover:shadow-xl hover:border-red-300 transition-all p-5 group">
+                <div class="flex items-center gap-3 mb-3">
+                    <div class="p-2 bg-red-100 rounded-lg group-hover:scale-110 transition-transform"><span class="text-2xl">💉</span></div>
+                    <div>
+                        <h4 class="font-bold text-gray-900">SQL Injection</h4>
+                        <span class="text-[10px] font-semibold text-red-600">T1190 · Initial Access</span>
+                    </div>
+                    <span class="ml-auto px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-bold rounded">HIGH</span>
+                </div>
+                <p class="text-xs text-gray-600">Inject SQL payloads to bypass authentication. Learn about input validation defenses.</p>
+            </a>
+            <a href="/lab/cmdi" class="block bg-white rounded-xl border-2 border-gray-200 shadow-md hover:shadow-xl hover:border-purple-300 transition-all p-5 group">
+                <div class="flex items-center gap-3 mb-3">
+                    <div class="p-2 bg-purple-100 rounded-lg group-hover:scale-110 transition-transform"><span class="text-2xl">⚡</span></div>
+                    <div>
+                        <h4 class="font-bold text-gray-900">Command Injection</h4>
+                        <span class="text-[10px] font-semibold text-purple-600">T1059 · Execution</span>
+                    </div>
+                    <span class="ml-auto px-2 py-0.5 bg-purple-100 text-purple-700 text-[10px] font-bold rounded">CRITICAL</span>
+                </div>
+                <p class="text-xs text-gray-600">Execute OS commands through vulnerable web interfaces. Explore shell injection and chaining.</p>
+            </a>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl shadow-xl p-6">
+        <h3 class="font-bold text-lg mb-4">📊 Simulation Lab Statistics</h3>
+        <div class="grid grid-cols-4 gap-4">
+            <div class="bg-white/20 backdrop-blur rounded-lg p-4 text-center">
+                <div class="text-3xl font-bold mb-1">4</div><div class="text-xs opacity-90">Mission Phases</div>
+            </div>
+            <div class="bg-white/20 backdrop-blur rounded-lg p-4 text-center">
+                <div class="text-3xl font-bold mb-1">3</div><div class="text-xs opacity-90">Attack Labs</div>
+            </div>
+            <div class="bg-white/20 backdrop-blur rounded-lg p-4 text-center">
+                <div class="text-3xl font-bold mb-1">7</div><div class="text-xs opacity-90">MITRE Techniques</div>
+            </div>
+            <div class="bg-white/20 backdrop-blur rounded-lg p-4 text-center">
+                <div class="text-3xl font-bold mb-1">100%</div><div class="text-xs opacity-90">Safe & Isolated</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

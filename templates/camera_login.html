@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ persona_name }} - Web Viewer</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Arial, sans-serif; 
+            background: #1a1a2e; 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            height: 100vh; 
+            margin: 0;
+        }
+        .login-container {
+            background: #16213e;
+            border: 1px solid #0f3460;
+            border-radius: 4px;
+            width: 400px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            overflow: hidden;
+        }
+        .login-header {
+            background: linear-gradient(135deg, #0f3460 0%, #1a1a4e 100%);
+            padding: 25px 30px;
+            text-align: center;
+            border-bottom: 2px solid #e94560;
+        }
+        .camera-icon {
+            font-size: 36px;
+            margin-bottom: 8px;
+        }
+        .login-header h2 {
+            color: #ffffff;
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        .login-header p {
+            color: #7f8fa6;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+        .login-body {
+            padding: 30px;
+        }
+        .form-group {
+            margin-bottom: 16px;
+        }
+        .form-group label {
+            display: block;
+            color: #a0a8c0;
+            font-size: 12px;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1px solid #0f3460;
+            border-radius: 3px;
+            background: #1a1a2e;
+            color: #e0e0e0;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        input:focus {
+            border-color: #e94560;
+        }
+        input::placeholder {
+            color: #4a5078;
+        }
+        .login-btn {
+            width: 100%;
+            padding: 11px;
+            background: #e94560;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: background 0.2s;
+            margin-top: 8px;
+        }
+        .login-btn:hover { background: #c0392b; }
+        .error-msg {
+            color: #e94560;
+            background: rgba(233,69,96,0.1);
+            border: 1px solid rgba(233,69,96,0.2);
+            padding: 8px 12px;
+            border-radius: 3px;
+            margin-bottom: 16px;
+            font-size: 12px;
+            display: none;
+        }
+        .login-footer {
+            padding: 15px 30px;
+            background: #111830;
+            border-top: 1px solid #0f3460;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .status-dot {
+            width: 8px; height: 8px;
+            background: #27ae60;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+        .footer-text {
+            color: #5a6078;
+            font-size: 10px;
+        }
+        .footer-status {
+            color: #7f8fa6;
+            font-size: 11px;
+        }
+        .channel-info {
+            color: #4a5078;
+            font-size: 11px;
+            text-align: center;
+            margin-top: 12px;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <div class="camera-icon">📹</div>
+            <h2>{{ persona_name }}</h2>
+            <p>Network Video Recorder — Web Access</p>
+        </div>
+
+        <div class="login-body">
+            <div id="error" class="error-msg">Authentication failed. Verify credentials and try again.</div>
+
+            <form action="/login" method="post">
+                <div class="form-group">
+                    <label>Username</label>
+                    <input type="text" name="username" placeholder="admin" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" name="password" placeholder="••••••" required>
+                </div>
+                <button type="submit" class="login-btn">Login</button>
+            </form>
+
+            <div class="channel-info">
+                Channels: 16/16 Online &nbsp;|&nbsp; Storage: 2.8TB / 4.0TB
+            </div>
+        </div>
+
+        <div class="login-footer">
+            <span class="footer-status">
+                <span class="status-dot"></span>Recording
+            </span>
+            <span class="footer-text">&copy; 2026 {{ vendor }} Technology</span>
+        </div>
+    </div>
+
+    <script>
+        if (window.location.search.includes('error')) {
+            document.getElementById('error').style.display = 'block';
+        }
+    </script>
+</body>
+</html>
