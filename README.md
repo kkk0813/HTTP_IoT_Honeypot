@@ -109,7 +109,7 @@ sudo nginx -t && sudo systemctl restart nginx
 
 | Dashboard | Interactive Lab |
 |---|---|
-| ![Dashboard](screenshots/dashboard.png) | ![Logs](screenshots/attacklogs.png) | ![Lab](screenshots/practicalLab.png) | ![Settings](screenshots/settings.png) |
+| ![Dashboard](screenshots/dashboard.png) | ![Lab](screenshots/practicalLab.png) | ![Logs](screenshots/attacklogs.png) | ![Settings](screenshots/settings.png) |
 
 ## License
 
