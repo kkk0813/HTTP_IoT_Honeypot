@@ -52,85 +52,106 @@
             </div>
         </header>
 
-        <!-- Security Filter Toggle -->
-        <div class="mb-6 p-5 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200 shadow-sm">
-            <div class="flex items-center justify-between">
-                <div class="flex-1">
-                    <div class="flex items-center gap-2 mb-2">
-                        <span class="text-xl">🔍</span>
-                        <h4 class="font-bold text-blue-900">Security Filter</h4>
-                        <span id="filter-badge" class="hidden px-2 py-0.5 bg-green-500 text-white text-xs font-bold rounded-full animate-pulse">ACTIVE</span>
+        <!-- ================================================================ -->
+        <!-- COLLAPSIBLE: Security Filter + Export (click header to expand) -->
+        <!-- ================================================================ -->
+        <div class="mb-4 rounded-xl border shadow-sm overflow-hidden bg-white">
+            <!-- Collapsed Bar Header (always visible) -->
+            <div onclick="toggleToolbar()" class="flex items-center justify-between px-5 py-3 cursor-pointer hover:bg-gray-50 transition-colors select-none">
+                <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-2">
+                        <span class="text-base">🔍</span>
+                        <span class="text-sm font-bold text-gray-700">Security Filter</span>
+                        <span id="filter-badge" class="hidden px-2 py-0.5 bg-green-500 text-white text-[10px] font-bold rounded-full animate-pulse">ACTIVE</span>
                     </div>
-                    <p class="text-xs text-blue-700 leading-relaxed">
-                        Filter out background noise (favicon requests, robots.txt, CSS) to focus on malicious attacks. 
-                        Essential skill for SOC analysts in real-world threat hunting.
-                    </p>
-                    <div id="stats-row" class="hidden mt-3 flex gap-4 text-xs">
-                        <div class="flex items-center gap-2">
-                            <span class="text-blue-600 font-semibold">Total Events:</span>
-                            <span id="stat-total" class="font-mono font-bold text-gray-700">0</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="text-red-600 font-semibold">Malicious:</span>
-                            <span id="stat-malicious" class="font-mono font-bold text-red-700">0</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="text-gray-500 font-semibold">Noise:</span>
-                            <span id="stat-noise" class="font-mono font-bold text-gray-500">0</span>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <span class="text-purple-600 font-semibold">Signal-to-Noise Ratio:</span>
-                            <span id="stat-ratio" class="font-mono font-bold text-purple-700">-</span>
-                        </div>
+                    <span class="text-gray-300">|</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-base">📤</span>
+                        <span class="text-sm font-bold text-gray-700">Export Data</span>
                     </div>
                 </div>
-                
-                <!-- Toggle Switch -->
-                <label class="relative inline-block w-14 h-7 ml-4">
-                    <input type="checkbox" id="security-filter" onchange="toggleSecurityFilter()" class="sr-only peer">
-                    <div class="w-full h-full bg-gray-300 rounded-full peer peer-checked:bg-green-500 transition-all duration-300 cursor-pointer shadow-inner"></div>
-                    <div class="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full transition-all duration-300 peer-checked:translate-x-7 shadow-md"></div>
-                    <span class="absolute top-1.5 left-8 text-[10px] font-bold text-gray-500 peer-checked:hidden">OFF</span>
-                    <span class="absolute top-1.5 left-1.5 text-[10px] font-bold text-white peer-checked:block hidden">ON</span>
-                </label>
-            </div>
-        </div>
-
-        <!-- ================================================================ -->
-        <!-- EXPORT TOOLBAR (FR-9 + NFR-S2: IP Anonymization on Export)       -->
-        <!-- ================================================================ -->
-        <div class="mb-6 flex items-center justify-between bg-white rounded-xl border shadow-sm p-4">
-            <div class="flex items-center gap-3">
-                <span class="text-lg">📤</span>
-                <div>
-                    <h4 class="text-sm font-bold text-gray-900">Export Attack Data</h4>
-                    <p class="text-xs text-gray-500">Download filtered logs as CSV or JSON. Current filters apply to export.</p>
-                </div>
+                <svg id="toolbar-arrow" class="w-5 h-5 text-gray-400 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
             </div>
 
-            <div class="flex items-center gap-4">
-                <!-- Anonymization Toggle -->
-                <div class="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
-                    <label class="relative inline-block w-10 h-5">
-                        <input type="checkbox" id="anonymize-toggle" class="sr-only peer">
-                        <div class="w-full h-full bg-gray-300 rounded-full peer peer-checked:bg-amber-500 transition-all cursor-pointer"></div>
-                        <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-5 shadow"></div>
-                    </label>
-                    <div>
-                        <span class="text-xs font-bold text-amber-800">Anonymize IPs</span>
-                        <p class="text-[10px] text-amber-600 leading-tight">Mask last octet for research sharing</p>
+            <!-- Expandable Content -->
+            <div id="toolbar-content" class="hidden border-t">
+                <!-- Security Filter Section -->
+                <div class="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+                    <div class="flex items-center justify-between">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="text-lg">🔍</span>
+                                <h4 class="font-bold text-blue-900 text-sm">Security Filter</h4>
+                            </div>
+                            <p class="text-xs text-blue-700 leading-relaxed">
+                                Filter out background noise (favicon requests, robots.txt, CSS) to focus on malicious attacks.
+                                Essential skill for SOC analysts in real-world threat hunting.
+                            </p>
+                            <div id="stats-row" class="hidden mt-2 flex gap-4 text-xs">
+                                <div class="flex items-center gap-1">
+                                    <span class="text-blue-600 font-semibold">Total:</span>
+                                    <span id="stat-total" class="font-mono font-bold text-gray-700">0</span>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    <span class="text-red-600 font-semibold">Malicious:</span>
+                                    <span id="stat-malicious" class="font-mono font-bold text-red-700">0</span>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    <span class="text-gray-500 font-semibold">Noise:</span>
+                                    <span id="stat-noise" class="font-mono font-bold text-gray-500">0</span>
+                                </div>
+                                <div class="flex items-center gap-1">
+                                    <span class="text-purple-600 font-semibold">S/N Ratio:</span>
+                                    <span id="stat-ratio" class="font-mono font-bold text-purple-700">-</span>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Toggle Switch -->
+                        <label class="relative inline-block w-14 h-7 ml-4">
+                            <input type="checkbox" id="security-filter" onchange="toggleSecurityFilter()" class="sr-only peer">
+                            <div class="w-full h-full bg-gray-300 rounded-full peer peer-checked:bg-green-500 transition-all duration-300 cursor-pointer shadow-inner"></div>
+                            <div class="absolute top-0.5 left-0.5 w-6 h-6 bg-white rounded-full transition-all duration-300 peer-checked:translate-x-7 shadow-md"></div>
+                            <span class="absolute top-1.5 left-8 text-[10px] font-bold text-gray-500 peer-checked:hidden">OFF</span>
+                            <span class="absolute top-1.5 left-1.5 text-[10px] font-bold text-white peer-checked:block hidden">ON</span>
+                        </label>
                     </div>
                 </div>
 
-                <!-- Export Buttons -->
-                <button onclick="exportData('csv')"
-                        class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
-                    <span>📊</span> Export CSV
-                </button>
-                <button onclick="exportData('json')"
-                        class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
-                    <span>📋</span> Export JSON
-                </button>
+                <!-- Export Section -->
+                <div class="p-4 flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <span class="text-lg">📤</span>
+                        <div>
+                            <h4 class="text-sm font-bold text-gray-900">Export Attack Data</h4>
+                            <p class="text-xs text-gray-500">Download filtered logs as CSV or JSON. Current filters apply to export.</p>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <!-- Anonymization Toggle -->
+                        <div class="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg">
+                            <label class="relative inline-block w-10 h-5">
+                                <input type="checkbox" id="anonymize-toggle" class="sr-only peer">
+                                <div class="w-full h-full bg-gray-300 rounded-full peer peer-checked:bg-amber-500 transition-all cursor-pointer"></div>
+                                <div class="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full transition-all peer-checked:translate-x-5 shadow"></div>
+                            </label>
+                            <div>
+                                <span class="text-xs font-bold text-amber-800">Anonymize IPs</span>
+                                <p class="text-[10px] text-amber-600 leading-tight">Mask last octet for research sharing</p>
+                            </div>
+                        </div>
+                        <!-- Export Buttons -->
+                        <button onclick="exportData('csv')"
+                                class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
+                            <span>📊</span> Export CSV
+                        </button>
+                        <button onclick="exportData('json')"
+                                class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
+                            <span>📋</span> Export JSON
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -273,6 +294,38 @@
                 </div>
             </div>
             
+            <!-- ============================================================ -->
+            <!-- RECONSTRUCTED COMMAND                                        -->
+            <!-- ============================================================ -->
+            <div class="mb-6 bg-gray-900 rounded-xl overflow-hidden">
+                <div class="bg-gray-800 px-4 py-2 flex items-center gap-2 border-b border-gray-700">
+                    <span class="text-lg">🔧</span>
+                    <h4 class="font-bold text-white text-sm">Reconstructed Attack Command</h4>
+                    <span class="text-[10px] text-gray-400 ml-2 bg-gray-700 px-2 py-0.5 rounded">Equivalent — not the exact original</span>
+                    <button onclick="copyReconstructedCmd()" class="ml-auto text-[10px] bg-gray-700 hover:bg-gray-600 text-gray-300 px-2 py-1 rounded transition-colors flex items-center gap-1">
+                        <span id="copy-cmd-icon">📋</span> <span id="copy-cmd-text">Copy</span>
+                    </button>
+                </div>
+                <div class="p-4">
+                    <!-- Tool Detection -->
+                    <div id="tool-detection" class="mb-3 flex items-center gap-2 text-xs">
+                        <span id="tool-icon" class="text-base">🔍</span>
+                        <span id="tool-name" class="font-bold text-cyan-400">Unknown Tool</span>
+                        <span class="text-gray-500">—</span>
+                        <span id="tool-note" class="text-gray-400">Detected from User-Agent header</span>
+                    </div>
+                    <!-- Reconstructed Command -->
+                    <div class="bg-black/40 p-3 rounded border border-gray-700">
+                        <pre id="reconstructed-cmd" class="text-yellow-300 whitespace-pre-wrap break-all font-mono text-xs">--</pre>
+                    </div>
+                    <!-- Educational Note -->
+                    <p class="mt-2 text-[10px] text-gray-500 leading-relaxed">
+                        This command is reconstructed from captured HTTP data (method, path, headers, payload). 
+                        It would produce an identical HTTP request on the wire. The attacker's original tool may differ.
+                    </p>
+                </div>
+            </div>
+
             <!-- MITRE ATT&CK Mapping -->
             <div class="mb-6 p-4 bg-purple-50 border-2 border-purple-200 rounded-xl">
                 <div class="flex items-center gap-2 mb-3">
@@ -311,7 +364,7 @@
             </div>
             
             <!-- Defense Recommendations -->
-            <div class="p-4 bg-green-50 border-2 border-green-200 rounded-xl">
+            <div class="mb-6 p-4 bg-green-50 border-2 border-green-200 rounded-xl">
                 <div class="flex items-center gap-2 mb-3">
                     <span class="text-xl">🛡️</span>
                     <h4 class="font-bold text-green-900">Defense Recommendations</h4>
@@ -319,6 +372,39 @@
                 <ul id="defense-tips" class="text-sm text-green-800 space-y-2">
                     <!-- Dynamically populated -->
                 </ul>
+            </div>
+
+            <!-- ============================================================ -->
+            <!-- AI ANALYSIS - Copy prompt for free AI tools                  -->
+            <!-- ============================================================ -->
+            <div class="p-4 bg-gradient-to-r from-indigo-50 to-violet-50 border-2 border-indigo-200 rounded-xl">
+                <div class="flex items-center gap-2 mb-2">
+                    <span class="text-xl">🤖</span>
+                    <h4 class="font-bold text-indigo-900">AI-Powered Deep Analysis</h4>
+                    <span class="text-[10px] bg-indigo-200 text-indigo-700 px-2 py-0.5 rounded-full font-bold">FREE</span>
+                </div>
+                <p class="text-xs text-indigo-700 mb-3 leading-relaxed">
+                    Copy a pre-built analysis prompt containing this attack's data and paste it into any AI assistant 
+                    for a detailed, tool-specific security breakdown. No API key required.
+                </p>
+                <div class="flex items-center gap-2">
+                    <button onclick="copyAIPrompt()" 
+                            class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-1.5 shadow-sm">
+                        <span id="ai-copy-icon">📋</span> <span id="ai-copy-text">Copy AI Prompt</span>
+                    </button>
+                    <a href="https://gemini.google.com/" target="_blank" 
+                       class="px-3 py-2 bg-white border border-indigo-300 text-indigo-700 text-xs font-bold rounded-lg hover:bg-indigo-50 transition-colors flex items-center gap-1.5">
+                        Open Google Gemini ↗
+                    </a>
+                    <a href="https://copilot.microsoft.com/" target="_blank"
+                       class="px-3 py-2 bg-white border border-indigo-300 text-indigo-700 text-xs font-bold rounded-lg hover:bg-indigo-50 transition-colors flex items-center gap-1.5">
+                        Open Bing Copilot ↗
+                    </a>
+                    <a href="https://chatgpt.com/" target="_blank"
+                       class="px-3 py-2 bg-white border border-indigo-300 text-indigo-700 text-xs font-bold rounded-lg hover:bg-indigo-50 transition-colors flex items-center gap-1.5">
+                        Open ChatGPT ↗
+                    </a>
+                </div>
             </div>
         </div>
         
@@ -340,6 +426,16 @@
     let allLogs = [];
     let rawLogsWithNoise = [];
     let securityFilterEnabled = false;
+
+    // ============================================================================
+    // COLLAPSIBLE TOOLBAR
+    // ============================================================================
+    function toggleToolbar() {
+        const content = document.getElementById('toolbar-content');
+        const arrow = document.getElementById('toolbar-arrow');
+        content.classList.toggle('hidden');
+        arrow.classList.toggle('rotate-180');
+    }
 
     // 1. Native Browser API for Country Names (No list needed!)
     const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
@@ -458,6 +554,98 @@
                 `<strong>4. Attack Chain Position:</strong> Reconnaissance is the first step in the cyber kill chain - information gathered here informs subsequent attack phases.`,
                 `<strong>5. Next Steps:</strong> Data collected may be used to plan targeted brute force attempts, exploit known vulnerabilities, or craft phishing campaigns.`
             ]
+        },
+        'T1083_enum': {
+            id: 'T1083',
+            name: 'File and Directory Discovery',
+            tactic: 'Discovery',
+            description: 'Adversaries may enumerate files and directories to find sensitive files, configuration backups, or hidden admin panels. Automated tools like Gobuster, dirb, and ffuf brute-force common paths against web servers to discover unlinked resources.',
+            url: 'https://attack.mitre.org/techniques/T1083/',
+            icon: '📂',
+            color: 'blue',
+            defenses: [
+                '✓ Remove default and unnecessary files from web servers',
+                '✓ Implement proper access controls on all directories',
+                '✓ Use rate limiting to slow automated directory brute-forcing',
+                '✓ Return consistent 404 responses to avoid information leakage',
+                '✓ Monitor for high-volume sequential path requests from single IPs'
+            ],
+            story: (data) => [
+                `<strong>1. Automated Scanning:</strong> The attacker is using a directory brute-forcing tool to discover hidden files and folders on your ${data.vendor || 'Generic'} device.`,
+                `<strong>2. Target Path:</strong> The request to <code class="bg-gray-200 px-1 rounded">${data.path || '/unknown'}</code> was probed — attackers try thousands of common paths like /admin, /backup, /config, /.env.`,
+                `<strong>3. Tool Signature:</strong> User agent <code class="bg-gray-200 px-1 rounded">${data.agent || 'Unknown'}</code> suggests ${identifyScanner(data.agent)}.`,
+                `<strong>4. Goal:</strong> Find exposed admin panels, configuration backups, git repositories, or API endpoints that may reveal credentials or sensitive information.`,
+                `<strong>5. Threat Level:</strong> Directory enumeration is a precursor attack. If sensitive paths are found, the attacker will escalate to exploitation — making proper access controls critical.`
+            ]
+        },
+        'T1059.007': {
+            id: 'T1059.007',
+            name: 'JavaScript (XSS)',
+            tactic: 'Execution',
+            description: 'Cross-Site Scripting (XSS) allows adversaries to inject malicious JavaScript into web pages viewed by other users. In IoT devices, XSS can be used to steal admin session cookies, redirect users to phishing pages, or modify device configurations through the browser.',
+            url: 'https://attack.mitre.org/techniques/T1059/007/',
+            icon: '🌐',
+            color: 'red',
+            defenses: [
+                '✓ Implement Content Security Policy (CSP) headers to block inline scripts',
+                '✓ Sanitize and encode all user-supplied output (HTML entity encoding)',
+                '✓ Use HttpOnly and Secure flags on session cookies',
+                '✓ Validate input on both client-side and server-side',
+                '✓ Deploy a Web Application Firewall (WAF) to detect XSS patterns'
+            ],
+            story: (data) => [
+                `<strong>1. Injection Point:</strong> The attacker identified an input field on your ${data.vendor || 'Generic'} device that reflects user input without sanitization.`,
+                `<strong>2. Payload Crafting:</strong> A JavaScript payload was crafted using tags like <code class="bg-red-100 px-1 rounded">&lt;script&gt;</code>, event handlers like <code>onerror=</code>, or protocol handlers like <code>javascript:</code>.`,
+                `<strong>3. Attack Execution:</strong> From IP <code class="bg-gray-200 px-1 rounded">${data.ip}</code> (${getFlagEmoji(data.country)} ${getCountryName(data.country)}), the attacker injected: <code class="bg-red-100 px-1 rounded text-red-800">${formatPayloadBrief(data.payload)}</code>`,
+                `<strong>4. How It Works:</strong> If the payload executes in a victim's browser, it can steal session cookies (<code>document.cookie</code>), redirect to phishing sites, or silently modify device settings.`,
+                `<strong>5. IoT Impact:</strong> Many IoT web interfaces lack XSS protections. A stored XSS on a router admin panel could compromise every user who views the affected page.`
+            ]
+        },
+        'T1083_traversal': {
+            id: 'T1083',
+            name: 'Directory Traversal',
+            tactic: 'Discovery',
+            description: 'Directory traversal (path traversal) attacks use sequences like ../ to escape the web root and access files outside the intended directory. Attackers target sensitive system files such as /etc/passwd, /etc/shadow, or application configuration files.',
+            url: 'https://attack.mitre.org/techniques/T1083/',
+            icon: '📁',
+            color: 'orange',
+            defenses: [
+                '✓ Validate and canonicalize all file paths before use',
+                '✓ Use chroot jails or containers to restrict filesystem access',
+                '✓ Never use user input directly in file path operations',
+                '✓ Implement strict allowlists for accessible file paths',
+                '✓ Remove sensitive files from web-accessible directories'
+            ],
+            story: (data) => [
+                `<strong>1. Escape Attempt:</strong> The attacker is trying to break out of the web root directory on your ${data.vendor || 'Generic'} device using path traversal sequences.`,
+                `<strong>2. Traversal Payload:</strong> Sequences like <code class="bg-red-100 px-1 rounded">../</code>, <code>..\\</code>, or URL-encoded variants (<code>%2e%2e</code>) attempt to navigate up the directory tree.`,
+                `<strong>3. Attack Execution:</strong> From <code class="bg-gray-200 px-1 rounded">${data.ip}</code>, the attacker targeted: <code class="bg-red-100 px-1 rounded">${data.path || '/unknown'}</code>`,
+                `<strong>4. Target Files:</strong> Common targets include <code>/etc/passwd</code> (user accounts), <code>/etc/shadow</code> (password hashes), <code>config.ini</code>, and <code>.env</code> (credentials and API keys).`,
+                `<strong>5. Severity:</strong> Successful traversal can expose <strong class="text-red-600">system credentials, configuration files, and sensitive data</strong>. Many IoT devices are especially vulnerable due to minimal filesystem protections.`
+            ]
+        },
+        'T1105': {
+            id: 'T1105',
+            name: 'Ingress Tool Transfer',
+            tactic: 'Command and Control',
+            description: 'Adversaries may transfer tools or files from an external system into a compromised environment. Malicious file uploads to IoT devices can install web shells, backdoors, or malware that provides persistent remote access to the attacker.',
+            url: 'https://attack.mitre.org/techniques/T1105/',
+            icon: '📦',
+            color: 'red',
+            defenses: [
+                '✓ Validate file types using content inspection, not just file extensions',
+                '✓ Store uploaded files outside the web root with randomized names',
+                '✓ Implement file size limits and scan uploads with antivirus',
+                '✓ Disable script execution in upload directories',
+                '✓ Use Content-Disposition headers to prevent direct execution'
+            ],
+            story: (data) => [
+                `<strong>1. Upload Discovery:</strong> The attacker identified a file upload endpoint on your ${data.vendor || 'Generic'} device — firmware update pages and configuration imports are common targets.`,
+                `<strong>2. Payload Preparation:</strong> A malicious file (web shell, backdoor, or exploit) was crafted. Common formats include <code>.php</code>, <code>.jsp</code>, <code>.asp</code>, or disguised executables.`,
+                `<strong>3. Attack Execution:</strong> From <code class="bg-gray-200 px-1 rounded">${data.ip}</code> (${getFlagEmoji(data.country)} ${getCountryName(data.country)}), upload attempt: <code class="bg-red-100 px-1 rounded">${formatPayloadBrief(data.payload)}</code>`,
+                `<strong>4. Web Shell Threat:</strong> If a web shell like <code>c99.php</code> or <code>b374k</code> is uploaded successfully, the attacker gains a <strong class="text-red-600">persistent backdoor</strong> with full command execution.`,
+                `<strong>5. IoT Context:</strong> IoT firmware update mechanisms often lack proper validation. Attackers exploit this to upload modified firmware containing backdoors that survive device reboots.`
+            ]
         }
     };
 
@@ -470,6 +658,227 @@
         if (agent.includes('curl')) return '<span class="text-yellow-600">curl</span> - command-line HTTP tool';
         if (agent.includes('python')) return '<span class="text-yellow-600">Python script</span> - automated scanner';
         return 'automated scanning tool';
+    }
+
+    // ============================================================================
+    // COMMAND RECONSTRUCTION ENGINE
+    // ============================================================================
+    // Reconstructs the closest equivalent CLI command from captured HTTP data.
+    // Maps 8 attack types to their industry-standard offensive tools.
+    // ============================================================================
+    
+    let _currentModalData = null;
+    let _currentModalMitre = null;
+    const TARGET_IP = '{{ request.host.split(":")[0] }}';
+
+    function detectTool(data) {
+        const agent = (data.agent || '').toLowerCase();
+        const type = data.type || '';
+        
+        // Check User-Agent for known tools
+        if (agent.includes('sqlmap'))     return { name: 'SQLmap',     icon: '💉', note: 'Automated SQL injection tool (detected in User-Agent)' };
+        if (agent.includes('nmap'))       return { name: 'Nmap',       icon: '🔍', note: 'Network scanner (detected in User-Agent)' };
+        if (agent.includes('nikto'))      return { name: 'Nikto',      icon: '🔍', note: 'Web vulnerability scanner (detected in User-Agent)' };
+        if (agent.includes('gobuster'))   return { name: 'Gobuster',   icon: '📂', note: 'Directory brute-forcer (detected in User-Agent)' };
+        if (agent.includes('ffuf'))       return { name: 'ffuf',       icon: '📂', note: 'Fast web fuzzer (detected in User-Agent)' };
+        if (agent.includes('dirb'))       return { name: 'dirb',       icon: '📂', note: 'Directory scanner (detected in User-Agent)' };
+        if (agent.includes('dirbuster')) return { name: 'DirBuster',  icon: '📂', note: 'Directory brute-forcer (detected in User-Agent)' };
+        if (agent.includes('nuclei'))     return { name: 'Nuclei',     icon: '🔍', note: 'Vulnerability scanner (detected in User-Agent)' };
+        if (agent.includes('hydra'))      return { name: 'Hydra',      icon: '🔑', note: 'Brute force tool (detected in User-Agent)' };
+        if (agent.includes('curl'))       return { name: 'curl',       icon: '🔧', note: 'Command-line HTTP tool (detected in User-Agent)' };
+        if (agent.includes('python'))     return { name: 'Python',     icon: '🐍', note: 'Python HTTP library (detected in User-Agent)' };
+        if (agent.includes('wget'))       return { name: 'wget',       icon: '🔧', note: 'Command-line download tool (detected in User-Agent)' };
+        
+        // Infer from attack type when User-Agent is generic (e.g., Mozilla)
+        if (type.includes('Brute'))       return { name: 'Hydra',      icon: '🔑', note: 'Inferred from attack type — Brute force tool' };
+        if (type.includes('Directory Enum')) return { name: 'Gobuster', icon: '📂', note: 'Inferred from attack type — Directory brute-forcer' };
+        if (type.includes('SQL'))         return { name: 'curl',       icon: '💉', note: 'Manual injection via curl (generic User-Agent)' };
+        if (type.includes('Recon'))       return { name: 'Nmap',       icon: '🔍', note: 'Inferred from attack type — Network scanner' };
+        
+        return { name: 'curl', icon: '🔧', note: 'Default reconstruction — original tool unknown' };
+    }
+
+    function getPayloadAsFormString(data) {
+        try {
+            const p = typeof data.payload === 'string' ? JSON.parse(data.payload.replace(/'/g, '"')) : data.payload;
+            // Extract form_data if nested (internet mode structure)
+            const formData = p.form_data || p;
+            return Object.entries(formData)
+                .filter(([k]) => k !== 'headers' && k !== 'query_params' && k !== 'raw_body' && k !== 'rate_limited')
+                .map(([k, v]) => `${k}=${v}`)
+                .join('&');
+        } catch {
+            return '';
+        }
+    }
+
+    function reconstructCommand(data) {
+        const type = data.type || '';
+        const method = data.method || 'GET';
+        const path = data.path || '/';
+        const tool = detectTool(data);
+        const formStr = getPayloadAsFormString(data);
+        
+        // ── 1. SQL Injection (T1190) ──
+        if (type.includes('SQL')) {
+            if (tool.name === 'SQLmap') {
+                if (method === 'POST') {
+                    return `sqlmap -u "http://${TARGET_IP}${path}" --data="${formStr}" --batch --level=3`;
+                }
+                return `sqlmap -u "http://${TARGET_IP}${path}?${formStr}" --batch --level=3`;
+            }
+            return `curl -X POST "http://${TARGET_IP}${path}" \\\n  -d "${formStr}"`;
+        }
+        
+        // ── 2. Directory Traversal (T1083 traversal) ──
+        if (type.includes('Traversal')) {
+            return `curl --path-as-is "http://${TARGET_IP}${path}"`;
+        }
+        
+        // ── 3. Command Injection (T1059) ──
+        if (type.includes('Command')) {
+            return `curl -X ${method} "http://${TARGET_IP}${path}" \\\n  -d "${formStr}"`;
+        }
+        
+        // ── 4. XSS (T1059.007) ──
+        if (type.includes('XSS')) {
+            return `xsstrike -u "http://${TARGET_IP}${path}" \\\n  --data "${formStr}"`;
+        }
+        
+        // ── 5. Malicious Upload (T1105) ──
+        if (type.includes('Malicious Upload')) {
+            return `curl -X POST "http://${TARGET_IP}${path}" \\\n  -F "file=@malicious_payload.php"`;
+        }
+        
+        // ── 6. Brute Force (T1110) ──
+        if (type.includes('Brute')) {
+            if (tool.name === 'Hydra') {
+                return `hydra -L users.txt -P passwords.txt \\\n  ${TARGET_IP} \\\n  http-post-form "${path}:username=^USER^&password=^PASS^:F=error"`;
+            }
+            return `curl -X POST "http://${TARGET_IP}${path}" \\\n  -d "${formStr}"`;
+        }
+        
+        // ── 7. Directory Enumeration (T1083 enum) ──
+        if (type.includes('Directory Enum')) {
+            if (tool.name === 'ffuf') return `ffuf -u "http://${TARGET_IP}/FUZZ" \\\n  -w /usr/share/wordlists/dirb/common.txt`;
+            if (tool.name === 'dirb' || tool.name === 'DirBuster') return `dirb http://${TARGET_IP}/ \\\n  /usr/share/wordlists/dirb/common.txt`;
+            return `gobuster dir -u "http://${TARGET_IP}" \\\n  -w /usr/share/wordlists/dirb/common.txt`;
+        }
+        
+        // ── 8. Reconnaissance (T1595) ──
+        if (type.includes('Recon')) {
+            if (tool.name === 'Nikto') return `nikto -h http://${TARGET_IP}`;
+            if (tool.name === 'Nuclei') return `nuclei -u http://${TARGET_IP} -t cves/`;
+            return `nmap -sV -sC -p 80,443 ${TARGET_IP}`;
+        }
+        
+        // ── Fallback: generic curl ──
+        if (method === 'POST') {
+            return `curl -X POST "http://${TARGET_IP}${path}" \\\n  -d "${formStr}"`;
+        }
+        return `curl "http://${TARGET_IP}${path}"`;
+    }
+
+    function updateReconstructedCmd(data, mitre) {
+        const tool = detectTool(data);
+        const cmd = reconstructCommand(data);
+        
+        document.getElementById('tool-icon').textContent = tool.icon;
+        document.getElementById('tool-name').textContent = tool.name;
+        document.getElementById('tool-note').textContent = tool.note;
+        document.getElementById('reconstructed-cmd').textContent = cmd;
+    }
+
+    function copyReconstructedCmd() {
+        const cmd = document.getElementById('reconstructed-cmd').textContent;
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(cmd).then(() => triggerCopySuccess('cmd'));
+        } else {
+            fallbackCopy(cmd);
+            triggerCopySuccess('cmd');
+        }
+    }
+
+    // ============================================================================
+    // AI ANALYSIS PROMPT BUILDER
+    // ============================================================================
+    function buildAIPrompt(data, mitre) {
+        const tool = detectTool(data);
+        const cmd = reconstructCommand(data);
+        const payloadStr = formatPayloadFull(data.payload);
+        
+        return `I captured the following attack on my IoT honeypot system and need a detailed security analysis.
+
+ATTACK SUMMARY:
+- Attack Type: ${data.type}
+- MITRE ATT&CK: ${mitre.id} - ${mitre.name} (Tactic: ${mitre.tactic})
+- Source IP: ${data.ip}
+- Country: ${getCountryName(data.country)}
+- Abuse Score: ${data.score}/100
+- HTTP Method: ${data.method || 'GET'}
+- Target Path: ${data.path || '/'}
+- User-Agent: ${data.agent || 'Unknown'}
+- Timestamp: ${data.time || 'N/A'}
+
+CAPTURED PAYLOAD:
+${payloadStr}
+
+RECONSTRUCTED COMMAND (equivalent):
+${cmd}
+
+DETECTED TOOL: ${tool.name} (${tool.note})
+
+Please analyze this attack and provide:
+1. A detailed explanation of what this specific attack command does, step by step
+2. Why this attack targets IoT devices specifically
+3. What information the attacker was trying to obtain or what access they were trying to gain
+4. Real-world examples of this attack type (e.g., Mirai botnet, known CVEs)
+5. Specific defensive countermeasures with configuration examples
+6. How this attack fits into a broader attack chain (what would the attacker do next if successful?)`;
+    }
+
+    function copyAIPrompt() {
+        if (!_currentModalData || !_currentModalMitre) return;
+        const prompt = buildAIPrompt(_currentModalData, _currentModalMitre);
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(prompt).then(() => triggerCopySuccess('ai'));
+        } else {
+            fallbackCopy(prompt);
+            triggerCopySuccess('ai');
+        }
+    }
+
+    // ── Clipboard Helpers (HTTP-safe) ──
+    // navigator.clipboard requires HTTPS or localhost (secure context).
+    // The honeypot runs on HTTP over a host-only VM network, so we need
+    // a legacy fallback using a temporary textarea + execCommand('copy').
+    function fallbackCopy(text) {
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        textArea.style.position = 'fixed';
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try { document.execCommand('copy'); } catch (err) { console.error('Fallback copy failed', err); }
+        document.body.removeChild(textArea);
+    }
+
+    function triggerCopySuccess(type) {
+        if (type === 'cmd') {
+            document.getElementById('copy-cmd-icon').textContent = '✅';
+            document.getElementById('copy-cmd-text').textContent = 'Copied!';
+            setTimeout(() => {
+                document.getElementById('copy-cmd-icon').textContent = '📋';
+                document.getElementById('copy-cmd-text').textContent = 'Copy';
+            }, 2000);
+        } else {
+            document.getElementById('ai-copy-icon').textContent = '✅';
+            document.getElementById('ai-copy-text').textContent = 'Copied! Paste into AI assistant';
+            setTimeout(() => {
+                document.getElementById('ai-copy-icon').textContent = '📋';
+                document.getElementById('ai-copy-text').textContent = 'Copy AI Prompt';
+            }, 3000);
+        }
     }
 
     function formatPayloadBrief(payloadStr) {
@@ -627,9 +1036,21 @@
                 } else if (l.type.includes('Brute')) {
                     badgeClass = 'bg-orange-100 text-orange-700 px-2 py-1 rounded text-xs font-bold';
                     badgeIcon = '🔑';
+                } else if (l.type.includes('XSS')) {
+                    badgeClass = 'bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold';
+                    badgeIcon = '🌐';
                 } else if (l.type.includes('Command')) {
                     badgeClass = 'bg-purple-100 text-purple-700 px-2 py-1 rounded text-xs font-bold';
                     badgeIcon = '⚡';
+                } else if (l.type.includes('Traversal')) {
+                    badgeClass = 'bg-orange-100 text-orange-700 px-2 py-1 rounded text-xs font-bold';
+                    badgeIcon = '📁';
+                } else if (l.type.includes('Malicious Upload')) {
+                    badgeClass = 'bg-red-100 text-red-700 px-2 py-1 rounded text-xs font-bold';
+                    badgeIcon = '📦';
+                } else if (l.type.includes('Directory Enum')) {
+                    badgeClass = 'bg-blue-100 text-blue-700 px-2 py-1 rounded text-xs font-bold';
+                    badgeIcon = '📂';
                 } else {
                     badgeClass = 'bg-gray-100 px-2 py-1 rounded text-xs font-medium';
                     badgeIcon = '⚠️';
@@ -690,10 +1111,15 @@
         const data = allLogs[index];
         if (!data) return;
         
-        // Determine MITRE technique from attack type
-        let mitreKey = 'T1110'; // Default to brute force
+        // Determine MITRE technique from attack type — covers all 8 types
+        let mitreKey = 'T1595'; // Default to reconnaissance
         if (data.type.includes('SQL') || data.type.includes('T1190')) mitreKey = 'T1190';
+        else if (data.type.includes('XSS') || data.type.includes('T1059.007')) mitreKey = 'T1059.007';
         else if (data.type.includes('Command') || data.type.includes('T1059')) mitreKey = 'T1059';
+        else if (data.type.includes('Brute') || data.type.includes('T1110')) mitreKey = 'T1110';
+        else if (data.type.includes('Traversal')) mitreKey = 'T1083_traversal';
+        else if (data.type.includes('Directory Enum')) mitreKey = 'T1083_enum';
+        else if (data.type.includes('Malicious Upload') || data.type.includes('T1105')) mitreKey = 'T1105';
         else if (data.type.includes('Recon') || data.type.includes('Scanner') || data.type.includes('T1595')) mitreKey = 'T1595';
         
         const mitre = mitreKnowledge[mitreKey] || mitreKnowledge['T1110'];
@@ -754,6 +1180,13 @@
         
         // Update defense tips
         document.getElementById('defense-tips').innerHTML = mitre.defenses.map(d => `<li>${d}</li>`).join('');
+        
+        // Update reconstructed command and AI prompt
+        updateReconstructedCmd(data, mitre);
+        
+        // Store current data for AI prompt copy
+        _currentModalData = data;
+        _currentModalMitre = mitre;
         
         // Show modal
         const modal = document.getElementById('attack-modal');

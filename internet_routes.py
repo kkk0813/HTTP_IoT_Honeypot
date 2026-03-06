@@ -308,20 +308,53 @@ def _classify_attack(req, payload_dict):
     if any(sig in full_input for sig in sqli_sigs):
         return "SQL Injection (T1190)"
 
-    # ── 2. Command Injection (T1059: Command and Scripting Interpreter) ──
+    # ── 2. Directory Traversal (T1083: File and Directory Discovery) ──
+    # Checked BEFORE Command Injection because paths like ../../../../etc/passwd
+    # contain "etc/passwd" which would false-positive on CmdI signatures.
+    # Traversal = path escape via ../ sequences; CmdI = shell metacharacters.
+    # Two-layer detection:
+    #   Layer 1: ../ sequences (may be stripped by curl --path-as-is or Werkzeug)
+    #   Layer 2: Sensitive file paths in the URL — if someone requests /etc/passwd
+    #            directly in the path, it's traversal regardless of how ../ was handled.
+    traversal_sigs = ["../", "..\\", "%2e%2e", "....//", "%252e"]
+    if any(sig in full_input for sig in traversal_sigs):
+        return "Directory Traversal (T1083)"
+    
+    # Sensitive file targets that should never appear in a URL path
+    traversal_targets = [
+        "etc/passwd", "etc/shadow", "etc/hosts", "etc/hostname",
+        "proc/self", "proc/version", "proc/cpuinfo",
+        "windows/system32", "windows/win.ini", "boot.ini",
+        "var/log/", "tmp/", "root/.ssh", "root/.bash_history"
+    ]
+    if any(target in path for target in traversal_targets):
+        return "Directory Traversal (T1083)"
+
+    # ── 3. Command Injection (T1059: Command and Scripting Interpreter) ──
+    # "etc/passwd" and "etc/shadow" removed — now caught by traversal targets.
+    # Includes both "; cat " and ";cat " variants — real attackers often
+    # skip the space between the shell metacharacter and the command.
     cmd_sigs = [
-        "; cat ", "| cat ", "`cat ", "$(cat", "; ls", "| ls ",
-        "; id", "| id", "; wget ", "; curl ", "| wget", "| curl",
-        "/bin/sh", "/bin/bash", "etc/passwd", "etc/shadow",
-        "; rm ", "| rm ", "; nc ", "| nc ", "; python", "| python",
-        "; perl", "| perl", "; php", "| php", "; echo ", "| echo ",
-        "${ifs}", "; uname", "| uname", "; whoami", "| whoami",
-        "`id`", "`whoami`", "$(id)", "$(whoami)", "; ifconfig",
+        "; cat ", ";cat ", "| cat ", "|cat ", "`cat ", "$(cat",
+        "; ls", ";ls ", "| ls ", "|ls ",
+        "; id", ";id", "| id", "|id",
+        "; wget ", ";wget ", "; curl ", ";curl ",
+        "| wget", "|wget", "| curl", "|curl",
+        "/bin/sh", "/bin/bash",
+        "; rm ", ";rm ", "| rm ", "|rm ",
+        "; nc ", ";nc ", "| nc ", "|nc ",
+        "; python", ";python", "| python", "|python",
+        "; perl", ";perl", "| perl", "|perl",
+        "; php", ";php", "| php", "|php",
+        "; echo ", ";echo ", "| echo ", "|echo ",
+        "${ifs}", "; uname", ";uname", "| uname", "|uname",
+        "; whoami", ";whoami", "| whoami", "|whoami",
+        "`id`", "`whoami`", "$(id)", "$(whoami)", "; ifconfig", ";ifconfig",
     ]
     if any(sig in full_input for sig in cmd_sigs):
         return "Command Injection (T1059)"
 
-    # ── 3. XSS (T1059.007: JavaScript) ──
+    # ── 4. XSS (T1059.007: JavaScript) ──
     xss_sigs = [
         "<script", "javascript:", "onerror=", "onload=", "alert(",
         "prompt(", "confirm(", "document.cookie", "document.location",
@@ -329,11 +362,6 @@ def _classify_attack(req, payload_dict):
     ]
     if any(sig in full_input for sig in xss_sigs):
         return "XSS (T1059.007)"
-
-    # ── 4. Directory Traversal (T1083: File and Directory Discovery) ──
-    traversal_sigs = ["../", "..\\", "%2e%2e", "....//", "%252e"]
-    if any(sig in full_input for sig in traversal_sigs):
-        return "Directory Traversal (T1083)"
 
     # ── 5. Malicious File Upload (T1105: Ingress Tool Transfer) ──
     upload_sigs = [".php", ".jsp", ".asp", ".sh", ".py", "webshell",
