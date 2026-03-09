@@ -958,6 +958,9 @@ init_internet_module(
 )
 app.register_blueprint(internet_bp)
 
+from forensic import forensic_bp
+app.register_blueprint(forensic_bp)
+
 # Email notification module (FR-10)
 init_notifier(app_config=honeypot_config, db_path='attacks.db')
 

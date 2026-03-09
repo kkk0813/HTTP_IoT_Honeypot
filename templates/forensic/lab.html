@@ -1,0 +1,513 @@
+{% extends "base.html" %}
+
+{% block title %}{{ scenario.title }} | Forensic Reconstructor{% endblock %}
+
+{% block content %}
+<main class="flex-1 p-8 overflow-y-auto">
+
+    <!-- ================================================================ -->
+    <!-- HEADER                                                           -->
+    <!-- ================================================================ -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <a href="/forensic" class="text-xs text-blue-600 hover:underline mb-1 inline-block">← Back to cases</a>
+            <div class="flex items-center gap-3">
+                <span class="text-2xl">{{ scenario.icon }}</span>
+                <div>
+                    <h2 class="text-xl font-bold text-gray-900">{{ scenario.title }}</h2>
+                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-full
+                        {% if scenario.difficulty_color == 'green' %}bg-green-100 text-green-700
+                        {% elif scenario.difficulty_color == 'yellow' %}bg-yellow-100 text-yellow-700
+                        {% else %}bg-red-100 text-red-700{% endif %}">
+                        {{ scenario.difficulty }}
+                    </span>
+                    <span class="text-[10px] text-gray-400 ml-2">{{ scenario.attack_type }} · MITRE {{ scenario.mitre_id }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Clickable Stepper — serves as pagination nav -->
+        <div class="flex items-center gap-0">
+            <div class="flex items-center cursor-pointer" onclick="navigateToStep(1)">
+                <div id="step-circle-1" class="w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow hover:scale-110 transition-transform">1</div>
+                <span id="step-label-1" class="ml-1.5 text-xs font-bold text-blue-600">Detection</span>
+            </div>
+            <div id="connector-12" class="w-10 h-0.5 bg-gray-300 mx-1.5"></div>
+            <div class="flex items-center cursor-pointer" onclick="navigateToStep(2)">
+                <div id="step-circle-2" class="w-9 h-9 rounded-full bg-gray-300 text-gray-500 flex items-center justify-center font-bold text-sm hover:scale-110 transition-transform">2</div>
+                <span id="step-label-2" class="ml-1.5 text-xs font-bold text-gray-400">Identification</span>
+            </div>
+            <div id="connector-23" class="w-10 h-0.5 bg-gray-300 mx-1.5"></div>
+            <div class="flex items-center cursor-pointer" onclick="navigateToStep(3)">
+                <div id="step-circle-3" class="w-9 h-9 rounded-full bg-gray-300 text-gray-500 flex items-center justify-center font-bold text-sm hover:scale-110 transition-transform">3</div>
+                <span id="step-label-3" class="ml-1.5 text-xs font-bold text-gray-400">Reconstruction</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scenario Context -->
+    <div class="mb-6 p-4 bg-slate-50 border rounded-xl text-sm text-gray-700 leading-relaxed">
+        <strong>📋 Case Brief:</strong> {{ scenario.summary }}
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- STEP 1: DETECTION                                                -->
+    <!-- ================================================================ -->
+    <div id="step1-panel">
+        <div class="mb-3 flex items-center justify-between">
+            <div>
+                <h3 class="font-bold text-gray-800">Step 1: Detection — Analyze Raw Logs</h3>
+                <p class="text-xs text-gray-500">Click on each line you believe is malicious. Selected lines highlight in red.</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <span id="selection-count" class="text-xs font-mono font-bold text-gray-500">0 selected</span>
+                <button onclick="requestHint(1)" class="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs font-bold rounded-lg transition-colors">💡 Hint</button>
+                <button onclick="submitStep1()" class="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors shadow">Submit Analysis →</button>
+            </div>
+        </div>
+
+        <div id="hint-display" class="hidden mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800"></div>
+
+        <!-- Log Viewer -->
+        <div class="bg-gray-950 rounded-xl overflow-hidden border border-gray-800 shadow-lg">
+            <div class="bg-gray-900 px-4 py-2 flex items-center gap-2 border-b border-gray-800">
+                <span class="w-3 h-3 rounded-full bg-red-500"></span>
+                <span class="w-3 h-3 rounded-full bg-yellow-500"></span>
+                <span class="w-3 h-3 rounded-full bg-green-500"></span>
+                <span class="ml-3 text-xs text-gray-400 font-mono">access.log — {{ scenario.total_logs }} entries</span>
+                <span class="ml-auto text-[10px] text-gray-500">{{ scenario.malicious_count }} hidden threats</span>
+            </div>
+            <div class="p-1 max-h-[450px] overflow-y-auto" id="log-viewer">
+                {% for log in scenario.logs %}
+                <div class="log-line flex items-start gap-0 cursor-pointer hover:bg-gray-800/50 rounded px-3 py-1.5 transition-all select-none"
+                     data-line-id="{{ log.id }}"
+                     onclick="toggleLine(this, {{ log.id }})">
+                    <span class="text-gray-600 font-mono text-[11px] w-8 flex-shrink-0 text-right mr-3 select-none">{{ log.id + 1 }}</span>
+                    <span class="font-mono text-[11px] text-gray-300 leading-relaxed break-all">{{ log.raw }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div id="step1-feedback" class="hidden mt-4 p-4 rounded-xl border-2"></div>
+        <div id="step1-explanation" class="hidden mt-4 p-4 bg-blue-50 border-2 border-blue-200 rounded-xl text-sm text-blue-900"></div>
+        <div id="step1-next" class="hidden mt-4 text-right">
+            <button onclick="advanceToStep(2)" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-bold rounded-lg transition-colors shadow">
+                Continue to Step 2: Identification →
+            </button>
+        </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- STEP 2: IDENTIFICATION                                           -->
+    <!-- ================================================================ -->
+    <div id="step2-panel" class="hidden">
+        <div class="mb-3 flex items-center justify-between">
+            <div>
+                <h3 class="font-bold text-gray-800">Step 2: Identification — Classify the Threat</h3>
+                <p class="text-xs text-gray-500">Based on the malicious log patterns, classify the attack type and attribute it to a known botnet.</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="requestHint(2)" class="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs font-bold rounded-lg transition-colors">💡 Hint</button>
+                <button onclick="submitStep2()" class="px-4 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold rounded-lg transition-colors shadow">Submit Identification →</button>
+            </div>
+        </div>
+
+        <div id="hint-display-2" class="hidden mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800"></div>
+
+        <div class="grid grid-cols-2 gap-4">
+            <div class="bg-white p-5 rounded-xl border shadow-sm">
+                <label class="text-xs font-bold text-gray-600 uppercase block mb-2">Attack Type (MITRE ATT&CK)</label>
+                <select id="select-attack-type" class="w-full p-3 border-2 rounded-lg text-sm outline-none focus:border-purple-400 bg-white">
+                    <option value="">— Select attack type —</option>
+                    <option value="Brute Force">Brute Force (T1110 — Credential Access)</option>
+                    <option value="SQL Injection">SQL Injection (T1190 — Initial Access)</option>
+                    <option value="Command Injection">Command Injection (T1059 — Execution)</option>
+                    <option value="XSS">XSS (T1059.007 — Execution)</option>
+                    <option value="Directory Traversal">Directory Traversal (T1083 — Discovery)</option>
+                    <option value="Malicious Upload">Malicious Upload (T1105 — Command &amp; Control)</option>
+                    <option value="Directory Enumeration">Directory Enumeration (T1083 — Discovery)</option>
+                    <option value="Reconnaissance">Reconnaissance (T1595 — Reconnaissance)</option>
+                </select>
+            </div>
+            <div class="bg-white p-5 rounded-xl border shadow-sm">
+                <label class="text-xs font-bold text-gray-600 uppercase block mb-2">Threat Attribution (Botnet / Actor)</label>
+                <select id="select-botnet" class="w-full p-3 border-2 rounded-lg text-sm outline-none focus:border-purple-400 bg-white">
+                    <option value="">— Identify the botnet —</option>
+                    <option value="Mirai">Mirai (Credential Stuffing Botnet)</option>
+                    <option value="Mozi">Mozi (P2P Command Injection Botnet)</option>
+                    <option value="Hajime">Hajime (Decentralized IoT Botnet)</option>
+                    <option value="Generic APT">Generic APT / Manual Attack</option>
+                    <option value="BashLite">BashLite / Gafgyt (DDoS Botnet)</option>
+                    <option value="Dark Nexus">Dark Nexus (IoT Botnet)</option>
+                </select>
+            </div>
+        </div>
+
+        <div id="step2-feedback" class="hidden mt-4 p-4 rounded-xl border-2"></div>
+        <div id="step2-explanation" class="hidden mt-4 p-4 bg-purple-50 border-2 border-purple-200 rounded-xl text-sm text-purple-900"></div>
+        <div id="step2-next" class="hidden mt-4 text-right">
+            <button onclick="advanceToStep(3)" class="px-5 py-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-bold rounded-lg transition-colors shadow">
+                Continue to Step 3: Reconstruction →
+            </button>
+        </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- STEP 3: RECONSTRUCTION                                           -->
+    <!-- ================================================================ -->
+    <div id="step3-panel" class="hidden">
+        <div class="mb-3 flex items-center justify-between">
+            <div>
+                <h3 class="font-bold text-gray-800">Step 3: Reconstruction — Rebuild the Attack Command</h3>
+                <p class="text-xs text-gray-500">Write the CLI command that would produce the captured HTTP traffic.</p>
+            </div>
+            <div class="flex items-center gap-3">
+                <button onclick="requestHint(3)" class="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs font-bold rounded-lg transition-colors">💡 Hint</button>
+                <button onclick="showAnswer()" id="btn-show-answer" class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-600 text-xs font-bold rounded-lg transition-colors">👁 Show Answer</button>
+                <button onclick="submitStep3()" class="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg transition-colors shadow">Submit Command →</button>
+            </div>
+        </div>
+
+        <div id="hint-display-3" class="hidden mb-3 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800"></div>
+
+        <!-- Terminal Input -->
+        <div class="bg-gray-950 rounded-xl overflow-hidden border border-gray-800 shadow-lg">
+            <div class="bg-gray-900 px-4 py-2 flex items-center gap-2 border-b border-gray-800">
+                <span class="w-3 h-3 rounded-full bg-red-500"></span>
+                <span class="w-3 h-3 rounded-full bg-yellow-500"></span>
+                <span class="w-3 h-3 rounded-full bg-green-500"></span>
+                <span class="ml-3 text-xs text-gray-400 font-mono">analyst@honeypot:~$</span>
+            </div>
+            <div class="p-4">
+                <div class="flex items-center gap-2">
+                    <span class="text-green-500 font-mono text-sm flex-shrink-0">$</span>
+                    <input type="text" id="cmd-input"
+                           class="bg-transparent text-green-400 font-mono text-sm outline-none flex-1 placeholder-gray-600 caret-green-500"
+                           placeholder="Type your reconstructed command here (e.g., curl -X POST ...)"
+                           onkeydown="if(event.key==='Enter') submitStep3()">
+                </div>
+                <div id="keyword-feedback" class="hidden mt-3 pt-3 border-t border-gray-800 text-xs font-mono"></div>
+            </div>
+        </div>
+
+        <!-- Reference Command (shown after submit or Show Answer) -->
+        <div id="reference-cmd-box" class="hidden mt-4 bg-gray-900 rounded-xl overflow-hidden border border-gray-800">
+            <div class="bg-gray-800 px-4 py-2 flex items-center gap-2 border-b border-gray-700">
+                <span class="text-sm">📖</span>
+                <span class="text-xs font-bold text-gray-300">Reference Command</span>
+                <span class="text-[10px] text-gray-500 ml-2">— guaranteed working command</span>
+            </div>
+            <div class="p-4">
+                <pre id="reference-cmd" class="text-cyan-400 font-mono text-xs whitespace-pre-wrap break-all">--</pre>
+            </div>
+        </div>
+
+        <div id="step3-feedback" class="hidden mt-4 p-4 rounded-xl border-2"></div>
+        <div id="step3-explanation" class="hidden mt-4 p-4 bg-green-50 border-2 border-green-200 rounded-xl text-sm text-green-900"></div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- INVESTIGATION COMPLETE                                           -->
+    <!-- ================================================================ -->
+    <div id="complete-panel" class="hidden mt-8 p-8 bg-gradient-to-br from-green-50 to-emerald-50 border-2 border-green-300 rounded-2xl text-center">
+        <div class="text-5xl mb-4">🎉</div>
+        <h3 class="text-2xl font-bold text-green-800 mb-2">Investigation Complete!</h3>
+        <p class="text-sm text-green-700 mb-6 max-w-lg mx-auto">
+            You successfully detected the malicious traffic, identified the botnet, and reconstructed 
+            the attack command. These are core skills used by SOC analysts every day.
+        </p>
+        <div class="flex items-center justify-center gap-3">
+            <a href="/forensic" class="px-5 py-2.5 bg-green-600 hover:bg-green-700 text-white text-sm font-bold rounded-lg transition-colors shadow">
+                ← Choose Another Case
+            </a>
+            <a href="/dashboard" class="px-5 py-2.5 bg-white border border-green-300 text-green-700 text-sm font-bold rounded-lg hover:bg-green-50 transition-colors">
+                View Dashboard
+            </a>
+        </div>
+    </div>
+
+</main>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // @ts-nocheck
+    const SCENARIO = {{ scenario | tojson }};
+    const selectedLines = new Set();
+    let currentStep = 1;
+    let highestUnlocked = 1;  // Tracks which steps have been passed
+    let hintCounts = {1: 0, 2: 0, 3: 0};
+
+    // ============================================================================
+    // PAGINATION — switch visible panel
+    // ============================================================================
+    function navigateToStep(step) {
+        // Can only navigate to steps that are unlocked
+        if (step > highestUnlocked) return;
+
+        currentStep = step;
+
+        // Hide all panels
+        document.getElementById('step1-panel').classList.add('hidden');
+        document.getElementById('step2-panel').classList.add('hidden');
+        document.getElementById('step3-panel').classList.add('hidden');
+        document.getElementById('complete-panel').classList.add('hidden');
+
+        // Show the selected panel
+        document.getElementById(`step${step}-panel`).classList.remove('hidden');
+
+        // Update stepper visual — highlight active
+        for (let i = 1; i <= 3; i++) {
+            const circle = document.getElementById(`step-circle-${i}`);
+            const label = document.getElementById(`step-label-${i}`);
+
+            if (i < highestUnlocked || (i < step && i < highestUnlocked)) {
+                // Completed step
+                circle.className = 'w-9 h-9 rounded-full bg-green-500 text-white flex items-center justify-center font-bold text-sm shadow hover:scale-110 transition-transform';
+                circle.textContent = '✓';
+                label.className = 'ml-1.5 text-xs font-bold text-green-600';
+            } else if (i === step) {
+                // Active step
+                circle.className = 'w-9 h-9 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow hover:scale-110 transition-transform';
+                circle.textContent = i;
+                label.className = 'ml-1.5 text-xs font-bold text-blue-600';
+            } else if (i <= highestUnlocked) {
+                // Unlocked but not active
+                circle.className = 'w-9 h-9 rounded-full bg-green-500 text-white flex items-center justify-center font-bold text-sm shadow hover:scale-110 transition-transform';
+                circle.textContent = '✓';
+                label.className = 'ml-1.5 text-xs font-bold text-green-600';
+            } else {
+                // Locked
+                circle.className = 'w-9 h-9 rounded-full bg-gray-300 text-gray-500 flex items-center justify-center font-bold text-sm hover:scale-110 transition-transform';
+                circle.textContent = i;
+                label.className = 'ml-1.5 text-xs font-bold text-gray-400';
+            }
+        }
+
+        // Connectors
+        document.getElementById('connector-12').className = highestUnlocked >= 2
+            ? 'w-10 h-0.5 bg-green-500 mx-1.5' : 'w-10 h-0.5 bg-gray-300 mx-1.5';
+        document.getElementById('connector-23').className = highestUnlocked >= 3
+            ? 'w-10 h-0.5 bg-green-500 mx-1.5' : 'w-10 h-0.5 bg-gray-300 mx-1.5';
+
+        // Scroll to top
+        document.querySelector('main').scrollTop = 0;
+    }
+
+    function advanceToStep(step) {
+        highestUnlocked = Math.max(highestUnlocked, step);
+        navigateToStep(step);
+    }
+
+    // ============================================================================
+    // STEP 1: LOG LINE SELECTION
+    // ============================================================================
+    function toggleLine(el, lineId) {
+        if (currentStep !== 1 || highestUnlocked > 1) return; // Lock after passing
+
+        if (selectedLines.has(lineId)) {
+            selectedLines.delete(lineId);
+            el.classList.remove('bg-red-950/60', 'border-l-2', 'border-red-500');
+            el.querySelector('span:last-child').classList.remove('text-red-400');
+            el.querySelector('span:last-child').classList.add('text-gray-300');
+        } else {
+            selectedLines.add(lineId);
+            el.classList.add('bg-red-950/60', 'border-l-2', 'border-red-500');
+            el.querySelector('span:last-child').classList.remove('text-gray-300');
+            el.querySelector('span:last-child').classList.add('text-red-400');
+        }
+        document.getElementById('selection-count').textContent = `${selectedLines.size} selected`;
+    }
+
+    function submitStep1() {
+        if (selectedLines.size === 0) {
+            showFeedback('step1-feedback', false, 'No lines selected. Click on log lines you think are malicious.');
+            return;
+        }
+
+        fetch('/api/forensic/validate_step1', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ scenario_id: SCENARIO.id, selected_lines: Array.from(selectedLines) })
+        })
+        .then(r => r.json())
+        .then(result => {
+            showFeedback('step1-feedback', result.passed, result.feedback);
+            if (result.passed) {
+                highlightResults(result);
+                if (result.explanation) {
+                    document.getElementById('step1-explanation').innerHTML = result.explanation;
+                    document.getElementById('step1-explanation').classList.remove('hidden');
+                }
+                // Unlock step 2 and show next button
+                highestUnlocked = Math.max(highestUnlocked, 2);
+                document.getElementById('step1-next').classList.remove('hidden');
+            }
+        });
+    }
+
+    function highlightResults(result) {
+        document.querySelectorAll('.log-line').forEach(el => {
+            const id = parseInt(el.dataset.lineId);
+            const textSpan = el.querySelector('span:last-child');
+            if (result.correct.includes(id)) {
+                el.className = 'log-line flex items-start gap-0 px-3 py-1.5 rounded bg-green-950/40 border-l-2 border-green-500';
+                textSpan.className = 'font-mono text-[11px] text-green-400 leading-relaxed break-all';
+            } else if (result.missed.includes(id)) {
+                el.className = 'log-line flex items-start gap-0 px-3 py-1.5 rounded bg-yellow-950/30 border-l-2 border-yellow-500';
+                textSpan.className = 'font-mono text-[11px] text-yellow-400 leading-relaxed break-all';
+            } else if (result.false_positives.includes(id)) {
+                el.className = 'log-line flex items-start gap-0 px-3 py-1.5 rounded bg-orange-950/30 border-l-2 border-orange-500';
+                textSpan.className = 'font-mono text-[11px] text-orange-400 leading-relaxed break-all';
+            } else {
+                el.className = 'log-line flex items-start gap-0 px-3 py-1.5 rounded opacity-40';
+                textSpan.className = 'font-mono text-[11px] text-gray-500 leading-relaxed break-all';
+            }
+            el.style.cursor = 'default';
+        });
+    }
+
+    // ============================================================================
+    // STEP 2: IDENTIFICATION
+    // ============================================================================
+    function submitStep2() {
+        const attackType = document.getElementById('select-attack-type').value;
+        const botnet = document.getElementById('select-botnet').value;
+        if (!attackType || !botnet) {
+            showFeedback('step2-feedback', false, 'Please select both an attack type and a botnet.');
+            return;
+        }
+
+        fetch('/api/forensic/validate_step2', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ scenario_id: SCENARIO.id, attack_type: attackType, botnet: botnet })
+        })
+        .then(r => r.json())
+        .then(result => {
+            showFeedback('step2-feedback', result.passed, result.feedback);
+            if (result.passed) {
+                if (result.explanation) {
+                    document.getElementById('step2-explanation').innerHTML = result.explanation;
+                    document.getElementById('step2-explanation').classList.remove('hidden');
+                }
+                // Unlock step 3 and show next button
+                highestUnlocked = Math.max(highestUnlocked, 3);
+                document.getElementById('step2-next').classList.remove('hidden');
+            }
+        });
+    }
+
+    // ============================================================================
+    // STEP 3: COMMAND RECONSTRUCTION
+    // ============================================================================
+    function submitStep3() {
+        const cmd = document.getElementById('cmd-input').value.trim();
+        if (!cmd) {
+            showFeedback('step3-feedback', false, 'No command entered.');
+            return;
+        }
+
+        fetch('/api/forensic/validate_step3', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ scenario_id: SCENARIO.id, command: cmd })
+        })
+        .then(r => r.json())
+        .then(result => {
+            showFeedback('step3-feedback', result.passed, result.feedback);
+
+            // Show keyword indicators
+            if (result.found_keywords || result.missing_keywords) {
+                const kwDiv = document.getElementById('keyword-feedback');
+                kwDiv.classList.remove('hidden');
+                kwDiv.innerHTML =
+                    (result.found_keywords || []).map(k => `<span class="text-green-400 mr-2">✓ ${k}</span>`).join('') +
+                    (result.missing_keywords || []).map(k => `<span class="text-red-400 mr-2">✗ ${k}</span>`).join('');
+            }
+
+            // Always show reference command after submission
+            if (result.reference_command) {
+                showReferenceCommand(result.reference_command);
+            }
+
+            if (result.passed) {
+                if (result.explanation) {
+                    document.getElementById('step3-explanation').innerHTML = result.explanation;
+                    document.getElementById('step3-explanation').classList.remove('hidden');
+                }
+                highestUnlocked = 4; // All done
+                // Show completion panel below step 3
+                document.getElementById('complete-panel').classList.remove('hidden');
+                // Update stepper circle 3 to complete
+                const c3 = document.getElementById('step-circle-3');
+                c3.className = 'w-9 h-9 rounded-full bg-green-500 text-white flex items-center justify-center font-bold text-sm shadow';
+                c3.textContent = '✓';
+                document.getElementById('step-label-3').className = 'ml-1.5 text-xs font-bold text-green-600';
+            }
+        });
+    }
+
+    function showAnswer() {
+        // Confirm before revealing
+        if (!confirm('Are you sure you want to see the answer? Try submitting your best guess first.')) return;
+
+        fetch('/api/forensic/validate_step3', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ scenario_id: SCENARIO.id, command: '__show_answer__' })
+        })
+        .then(r => r.json())
+        .then(result => {
+            if (result.reference_command) {
+                showReferenceCommand(result.reference_command);
+            }
+            // Disable the button after revealing
+            const btn = document.getElementById('btn-show-answer');
+            btn.textContent = '👁 Answer Revealed';
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            btn.onclick = null;
+        });
+    }
+
+    function showReferenceCommand(cmd) {
+        document.getElementById('reference-cmd').textContent = cmd;
+        document.getElementById('reference-cmd-box').classList.remove('hidden');
+    }
+
+    // ============================================================================
+    // HINT SYSTEM
+    // ============================================================================
+    function requestHint(step) {
+        fetch('/api/forensic/hint', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ scenario_id: SCENARIO.id, step: step, hint_count: hintCounts[step] })
+        })
+        .then(r => r.json())
+        .then(result => {
+            const displayId = step === 1 ? 'hint-display' : `hint-display-${step}`;
+            const el = document.getElementById(displayId);
+            el.innerHTML = `💡 <strong>Hint:</strong> ${result.hint}`;
+            el.classList.remove('hidden');
+            hintCounts[step]++;
+        });
+    }
+
+    // ============================================================================
+    // UTILITIES
+    // ============================================================================
+    function showFeedback(elementId, passed, message) {
+        const el = document.getElementById(elementId);
+        el.classList.remove('hidden');
+        if (passed) {
+            el.className = 'mt-4 p-4 rounded-xl border-2 bg-green-50 border-green-300 text-green-800 text-sm';
+            el.innerHTML = `✅ ${message}`;
+        } else {
+            el.className = 'mt-4 p-4 rounded-xl border-2 bg-red-50 border-red-300 text-red-800 text-sm';
+            el.innerHTML = `❌ ${message}`;
+        }
+    }
+</script>
+{% endblock %}
