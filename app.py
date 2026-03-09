@@ -960,6 +960,8 @@ app.register_blueprint(internet_bp)
 
 from forensic import forensic_bp
 app.register_blueprint(forensic_bp)
+from scripting import scripting_bp
+app.register_blueprint(scripting_bp)
 
 # Email notification module (FR-10)
 init_notifier(app_config=honeypot_config, db_path='attacks.db')

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Code & Catch | IoT Honeypot{% endblock %}
+
+{% block content %}
+<main class="flex-1 p-10 overflow-y-auto">
+    <header class="border-b pb-6 mb-8">
+        <div class="flex items-center gap-3 mb-2">
+            <span class="text-3xl">🛠️</span>
+            <h2 class="text-2xl font-bold text-gray-900">Code & Catch</h2>
+            <span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-bold rounded-full uppercase">Scripting Lab</span>
+        </div>
+        <p class="text-gray-500 text-sm max-w-2xl">
+            Write real Python and Bash scripts used in cybersecurity — from log parsing to network scanning to 
+            credential automation. No script kiddies here — you build the tools.
+        </p>
+    </header>
+
+    {% if error %}
+    <div class="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{{ error }}</div>
+    {% endif %}
+
+    <div class="grid grid-cols-3 gap-5">
+        {% for l in lessons %}
+        <a href="/scripting/{{ l.id }}" class="block group">
+            <div class="bg-white rounded-2xl border-2 border-gray-200 p-6 hover:border-{% if l.badge_color == 'red' %}red{% elif l.badge_color == 'blue' %}blue{% else %}emerald{% endif %}-300 hover:-translate-y-1 hover:shadow-lg transition-all duration-200 h-full">
+                <div class="flex items-start justify-between mb-4">
+                    <div class="w-12 h-12 bg-{% if l.badge_color == 'red' %}red{% elif l.badge_color == 'blue' %}blue{% else %}emerald{% endif %}-100 rounded-xl flex items-center justify-center text-2xl">{{ l.icon }}</div>
+                    <div class="flex gap-1.5">
+                        <span class="px-2 py-0.5 text-[10px] font-bold rounded uppercase
+                            {% if l.badge_color == 'red' %}bg-red-50 text-red-600
+                            {% elif l.badge_color == 'blue' %}bg-blue-50 text-blue-600
+                            {% else %}bg-emerald-50 text-emerald-600{% endif %}">
+                            {{ l.badge }}
+                        </span>
+                        <span class="px-2 py-0.5 text-[10px] font-bold rounded
+                            {% if l.difficulty_color == 'green' %}bg-green-100 text-green-700
+                            {% elif l.difficulty_color == 'yellow' %}bg-yellow-100 text-yellow-700
+                            {% else %}bg-red-100 text-red-700{% endif %}">
+                            {{ l.difficulty }}
+                        </span>
+                    </div>
+                </div>
+                <h4 class="text-lg font-bold text-gray-900 group-hover:text-{% if l.badge_color == 'red' %}red{% elif l.badge_color == 'blue' %}blue{% else %}emerald{% endif %}-700 transition-colors mb-0.5">{{ l.title }}</h4>
+                <p class="text-[11px] text-gray-400 font-bold mb-2">{{ l.subtitle }}</p>
+                <p class="text-xs text-gray-500 leading-relaxed">{{ l.summary[:120] }}...</p>
+                <div class="mt-4 flex items-center gap-2">
+                    <span class="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded font-mono">{{ l.language }}</span>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</main>
+{% endblock %}

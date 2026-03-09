@@ -1,0 +1,262 @@
+{% extends "base.html" %}
+
+{% block title %}{{ lesson.title }} | Code & Catch{% endblock %}
+
+{% block content %}
+<main class="flex-1 p-8 overflow-y-auto">
+
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-6">
+        <div>
+            <a href="/scripting" class="text-xs text-blue-600 hover:underline mb-1 inline-block">← Back to lessons</a>
+            <div class="flex items-center gap-3">
+                <span class="text-2xl">{{ lesson.icon }}</span>
+                <div>
+                    <h2 class="text-xl font-bold text-gray-900">{{ lesson.title }}</h2>
+                    <div class="flex items-center gap-2 mt-0.5">
+                        <span class="text-[10px] font-bold px-2 py-0.5 rounded
+                            {% if lesson.badge_color == 'red' %}bg-red-50 text-red-600
+                            {% elif lesson.badge_color == 'blue' %}bg-blue-50 text-blue-600
+                            {% else %}bg-emerald-50 text-emerald-600{% endif %}">
+                            {{ lesson.badge }}
+                        </span>
+                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full
+                            {% if lesson.difficulty_color == 'green' %}bg-green-100 text-green-700
+                            {% elif lesson.difficulty_color == 'yellow' %}bg-yellow-100 text-yellow-700
+                            {% else %}bg-red-100 text-red-700{% endif %}">
+                            {{ lesson.difficulty }}
+                        </span>
+                        <span class="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-500 rounded font-mono">{{ lesson.language }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Challenge Briefing -->
+    <div class="mb-5 p-4 bg-slate-50 border rounded-xl">
+        <div class="text-sm text-gray-700 leading-relaxed mb-3"><strong>📋 Scenario:</strong> {{ lesson.summary }}</div>
+        <div class="text-sm text-gray-800 leading-relaxed"><strong>🎯 Challenge:</strong> {{ lesson.challenge | safe }}</div>
+    </div>
+
+    <!-- Learning Objectives (collapsible) -->
+    <div class="mb-5">
+        <details class="bg-white border rounded-xl overflow-hidden">
+            <summary class="px-4 py-2.5 cursor-pointer hover:bg-gray-50 text-sm font-bold text-gray-700 flex items-center gap-2">
+                <span>📚</span> Learning Objectives
+            </summary>
+            <div class="px-4 pb-3">
+                {% for obj in lesson.learning_objectives %}
+                <div class="flex items-start gap-2 py-1 text-xs text-gray-600"><span class="text-green-500 mt-0.5">✓</span> {{ obj }}</div>
+                {% endfor %}
+            </div>
+        </details>
+    </div>
+
+    {% if lesson.sample_log %}
+    <!-- Sample Log Data -->
+    <div class="mb-5 bg-gray-950 rounded-xl overflow-hidden border border-gray-800">
+        <div class="bg-gray-900 px-4 py-2 flex items-center gap-2 border-b border-gray-800">
+            <span class="w-3 h-3 rounded-full bg-red-500"></span>
+            <span class="w-3 h-3 rounded-full bg-yellow-500"></span>
+            <span class="w-3 h-3 rounded-full bg-green-500"></span>
+            <span class="ml-3 text-xs text-gray-400 font-mono">access.log (sample data)</span>
+        </div>
+        <pre class="p-4 text-[11px] text-gray-300 font-mono overflow-x-auto leading-relaxed">{{ lesson.sample_log }}</pre>
+    </div>
+    {% endif %}
+
+    <!-- Hint Display -->
+    <div id="hint-display" class="hidden mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800"></div>
+
+    <!-- Code Editor -->
+    <div class="mb-4 rounded-xl overflow-hidden border border-gray-800 shadow-lg">
+        <div class="bg-gray-900 px-4 py-2 flex items-center justify-between border-b border-gray-800">
+            <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-red-500"></span>
+                <span class="w-3 h-3 rounded-full bg-yellow-500"></span>
+                <span class="w-3 h-3 rounded-full bg-green-500"></span>
+                <span class="ml-3 text-xs text-gray-400 font-mono">{{ lesson.title | lower | replace(' ', '_') }}.{{ 'sh' if lesson.language == 'bash' else 'py' }}</span>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="requestHint()"
+                        class="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-700 text-xs font-bold rounded-lg transition-colors">
+                    💡 Hint
+                </button>
+                <button onclick="showAnswer()" id="btn-show-answer"
+                        class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 text-gray-600 text-xs font-bold rounded-lg transition-colors">
+                    👁 Show Answer
+                </button>
+                <button onclick="submitCode()"
+                        class="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-lg transition-colors shadow">
+                    ▶ Submit Code
+                </button>
+            </div>
+        </div>
+        <div id="editor" style="height: 260px; font-size: 13px;">{{ lesson.starter_code }}</div>
+    </div>
+
+    <!-- Validation Feedback (keyword indicators) -->
+    <div id="validation-result" class="hidden mb-4">
+        <div id="validation-feedback" class="p-4 rounded-xl border-2 text-sm mb-3"></div>
+        <div id="keyword-indicators" class="flex flex-wrap gap-2"></div>
+    </div>
+
+    <!-- Reference Solution (shown after submit or Show Answer) -->
+    <div id="reference-panel" class="hidden mb-4">
+        <div class="bg-gray-900 rounded-xl overflow-hidden border border-gray-800">
+            <div class="bg-gray-800 px-4 py-2 flex items-center gap-2 border-b border-gray-700">
+                <span class="text-sm">📖</span>
+                <span class="text-xs font-bold text-gray-300">Reference Solution</span>
+            </div>
+            <pre id="reference-code" class="p-4 text-green-400 font-mono text-xs overflow-x-auto whitespace-pre-wrap"></pre>
+        </div>
+
+        <!-- Line-by-line explanation -->
+        <div id="reference-explanation" class="mt-3 bg-white border rounded-xl overflow-hidden">
+            <div class="px-4 py-2 bg-gray-50 border-b">
+                <span class="text-xs font-bold text-gray-700">📚 Line-by-Line Breakdown</span>
+            </div>
+            <div id="explanation-content" class="p-4 space-y-3"></div>
+        </div>
+    </div>
+
+</main>
+
+<!-- Ace Editor CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.6/ace.min.js"></script>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // @ts-nocheck
+    const LESSON = {{ lesson | tojson }};
+    let hintIndex = 0;
+
+    // ============================================================================
+    // ACE EDITOR SETUP
+    // ============================================================================
+    const editor = ace.edit("editor");
+    editor.setTheme("ace/theme/monokai");
+    editor.session.setMode(LESSON.language === 'bash' ? "ace/mode/sh" : "ace/mode/python");
+    editor.setOptions({
+        fontSize: "13px",
+        showPrintMargin: false,
+        wrap: true,
+        tabSize: 4,
+        useSoftTabs: true,
+    });
+
+    // ============================================================================
+    // SUBMIT CODE
+    // ============================================================================
+    function submitCode() {
+        const code = editor.getValue().trim();
+        if (!code) {
+            showFeedback(false, 'No code submitted. Write your script in the editor above.');
+            return;
+        }
+
+        fetch('/api/scripting/validate', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ lesson_id: LESSON.id, code: code })
+        })
+        .then(r => r.json())
+        .then(result => {
+            showFeedback(result.passed, result.feedback);
+            showKeywordIndicators(result.found || [], result.missing || []);
+
+            // Always show reference after submission
+            if (result.reference_code) {
+                showReference(result.reference_code, result.reference_explanation);
+            }
+        });
+    }
+
+    // ============================================================================
+    // HINTS
+    // ============================================================================
+    function requestHint() {
+        fetch('/api/scripting/hint', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ lesson_id: LESSON.id, hint_index: hintIndex })
+        })
+        .then(r => r.json())
+        .then(result => {
+            const el = document.getElementById('hint-display');
+            el.innerHTML = `💡 <strong>Hint ${result.current || ''}/${result.total || ''}:</strong> ${result.hint}`;
+            el.classList.remove('hidden');
+            hintIndex++;
+        });
+    }
+
+    // ============================================================================
+    // SHOW ANSWER
+    // ============================================================================
+    function showAnswer() {
+        if (!confirm('Are you sure? Try submitting your code first to see which parts are correct.')) return;
+
+        fetch('/api/scripting/answer', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ lesson_id: LESSON.id })
+        })
+        .then(r => r.json())
+        .then(result => {
+            showReference(result.reference_code, result.reference_explanation);
+            const btn = document.getElementById('btn-show-answer');
+            btn.textContent = '👁 Answer Revealed';
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+            btn.onclick = null;
+        });
+    }
+
+    // ============================================================================
+    // UI HELPERS
+    // ============================================================================
+    function showFeedback(passed, message) {
+        const container = document.getElementById('validation-result');
+        const el = document.getElementById('validation-feedback');
+        container.classList.remove('hidden');
+
+        if (passed) {
+            el.className = 'p-4 rounded-xl border-2 text-sm bg-green-50 border-green-300 text-green-800';
+            el.innerHTML = `✅ ${message}`;
+        } else {
+            el.className = 'p-4 rounded-xl border-2 text-sm bg-red-50 border-red-300 text-red-800';
+            el.innerHTML = `❌ ${message}`;
+        }
+    }
+
+    function showKeywordIndicators(found, missing) {
+        const el = document.getElementById('keyword-indicators');
+        el.innerHTML =
+            found.map(k => `<span class="px-2.5 py-1 bg-green-100 text-green-700 text-xs font-bold rounded-lg">✓ ${k.label}</span>`).join('') +
+            missing.map(k => `<span class="px-2.5 py-1 bg-red-100 text-red-700 text-xs font-bold rounded-lg">✗ ${k.label}</span>`).join('');
+    }
+
+    function showReference(code, explanation) {
+        const panel = document.getElementById('reference-panel');
+        document.getElementById('reference-code').textContent = code;
+
+        if (explanation && explanation.length > 0) {
+            document.getElementById('explanation-content').innerHTML = explanation.map(item =>
+                `<div class="flex gap-3 items-start">
+                    <code class="text-xs bg-gray-100 px-2 py-1 rounded font-bold text-gray-800 whitespace-nowrap flex-shrink-0">${escapeHtml(item.line)}</code>
+                    <span class="text-xs text-gray-600 leading-relaxed">${item.explanation}</span>
+                </div>`
+            ).join('');
+        }
+
+        panel.classList.remove('hidden');
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+</script>
+{% endblock %}
