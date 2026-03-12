@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block title %}Campaign Intelligence | IoT Honeypot{% endblock %}
+
+{% block content %}
+<div class="flex-1 p-8 overflow-y-auto">
+    <!-- Header -->
+    <header class="mb-6">
+        <div class="flex items-center justify-between">
+            <div>
+                <h2 class="text-2xl font-bold text-gray-900">Campaign Intelligence</h2>
+                <p class="text-sm text-gray-500">Attacker profiles grouped by source IP — the story behind the attacks</p>
+            </div>
+            <div class="flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg">
+                <span class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                <span class="text-xs font-bold text-green-700">LIVE</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- ================================================================ -->
+    <!-- FACET FILTERS (pill buttons)                                      -->
+    <!-- ================================================================ -->
+    <div class="mb-6 flex flex-wrap items-center gap-2">
+        <!-- Time Range -->
+        <span class="text-[10px] font-bold text-gray-400 uppercase mr-1">Time:</span>
+        <button onclick="setFilter('period','1h')" data-filter="period" data-value="1h" class="filter-pill px-3 py-1.5 rounded-full text-xs font-bold border transition-colors bg-white text-gray-600 border-gray-200 hover:border-blue-300">Last Hour</button>
+        <button onclick="setFilter('period','24h')" data-filter="period" data-value="24h" class="filter-pill px-3 py-1.5 rounded-full text-xs font-bold border transition-colors bg-blue-600 text-white border-blue-600">24 Hours</button>
+        <button onclick="setFilter('period','7d')" data-filter="period" data-value="7d" class="filter-pill px-3 py-1.5 rounded-full text-xs font-bold border transition-colors bg-white text-gray-600 border-gray-200 hover:border-blue-300">7 Days</button>
+        <button onclick="setFilter('period','all')" data-filter="period" data-value="all" class="filter-pill px-3 py-1.5 rounded-full text-xs font-bold border transition-colors bg-white text-gray-600 border-gray-200 hover:border-blue-300">All Time</button>
+
+        <span class="w-px h-5 bg-gray-300 mx-2"></span>
+
+        <!-- Source -->
+        <span class="text-[10px] font-bold text-gray-400 uppercase mr-1">Source:</span>
+        <button onclick="setFilter('source','all')" data-filter="source" data-value="all" class="filter-pill px-3 py-1.5 rounded-full text-xs font-bold border transition-colors bg-blue-600 text-white border-blue-600">All</button>
+        <button onclick="setFilter('source','internet')" data-filter="source" data-value="internet" class="filter-pill px-3 py-1.5 rounded-full text-xs font-bold border transition-colors bg-white text-gray-600 border-gray-200 hover:border-red-300">🌐 Internet</button>
+        <button onclick="setFilter('source','simulation')" data-filter="source" data-value="simulation" class="filter-pill px-3 py-1.5 rounded-full text-xs font-bold border transition-colors bg-white text-gray-600 border-gray-200 hover:border-blue-300">🎓 Simulation</button>
+
+        <span class="w-px h-5 bg-gray-300 mx-2"></span>
+
+        <!-- Attack Type -->
+        <span class="text-[10px] font-bold text-gray-400 uppercase mr-1">Tactic:</span>
+        <button onclick="setFilter('attack_type','all')" data-filter="attack_type" data-value="all" class="filter-pill px-3 py-1.5 rounded-full text-xs font-bold border transition-colors bg-blue-600 text-white border-blue-600">All</button>
+        <button onclick="setFilter('attack_type','Brute Force')" data-filter="attack_type" data-value="Brute Force" class="filter-pill px-3 py-1.5 rounded-full text-xs font-bold border transition-colors bg-white text-orange-700 border-gray-200 hover:border-orange-300">🔑 Brute Force</button>
+        <button onclick="setFilter('attack_type','SQL Injection')" data-filter="attack_type" data-value="SQL Injection" class="filter-pill px-3 py-1.5 rounded-full text-xs font-bold border transition-colors bg-white text-red-700 border-gray-200 hover:border-red-300">💉 SQLi</button>
+        <button onclick="setFilter('attack_type','Command Injection')" data-filter="attack_type" data-value="Command Injection" class="filter-pill px-3 py-1.5 rounded-full text-xs font-bold border transition-colors bg-white text-purple-700 border-gray-200 hover:border-purple-300">⚡ CmdI</button>
+        <button onclick="setFilter('attack_type','Reconnaissance')" data-filter="attack_type" data-value="Reconnaissance" class="filter-pill px-3 py-1.5 rounded-full text-xs font-bold border transition-colors bg-white text-blue-700 border-gray-200 hover:border-blue-300">🔍 Recon</button>
+    </div>
+
+    <!-- Campaign count -->
+    <div class="mb-4 flex items-center justify-between">
+        <p id="campaign-count" class="text-xs text-gray-500 font-bold">Loading campaigns...</p>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- CAMPAIGN FEED                                                     -->
+    <!-- ================================================================ -->
+    <div id="campaign-feed" class="space-y-4">
+        <div class="text-center py-16 text-gray-400">
+            <div class="text-3xl mb-2">📡</div>
+            Loading campaign data...
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // ============================================================================
+    // STATE
+    // ============================================================================
+    let filters = { period: '24h', source: 'all', attack_type: 'all', vendor: 'all' };
+
+    const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
+    function getFlagEmoji(cc) {
+        if (!cc || cc === 'Local') return '🏠';
+        if (cc === 'Unknown') return '🌐';
+        return cc.toUpperCase().replace(/./g, c => String.fromCodePoint(c.charCodeAt(0) + 127397));
+    }
+    function getCountryName(cc) {
+        try { return cc === 'Local' ? 'Internal Network' : regionNames.of(cc); }
+        catch { return cc; }
+    }
+
+    // ============================================================================
+    // FILTER SYSTEM
+    // ============================================================================
+    function setFilter(key, value) {
+        filters[key] = value;
+
+        // Update pill styles
+        document.querySelectorAll(`.filter-pill[data-filter="${key}"]`).forEach(btn => {
+            if (btn.dataset.value === value) {
+                btn.className = 'filter-pill px-3 py-1.5 rounded-full text-xs font-bold border transition-colors bg-blue-600 text-white border-blue-600';
+            } else {
+                btn.className = 'filter-pill px-3 py-1.5 rounded-full text-xs font-bold border transition-colors bg-white text-gray-600 border-gray-200 hover:border-blue-300';
+            }
+        });
+
+        loadCampaigns();
+    }
+
+    // ============================================================================
+    // LOAD & RENDER CAMPAIGNS
+    // ============================================================================
+    function loadCampaigns() {
+        const params = new URLSearchParams();
+        if (filters.period !== 'all') params.set('period', filters.period);
+        if (filters.source !== 'all') params.set('source', filters.source);
+        if (filters.attack_type !== 'all') params.set('attack_type', filters.attack_type);
+        if (filters.vendor !== 'all') params.set('vendor', filters.vendor);
+
+        fetch('/api/campaigns?' + params.toString())
+            .then(r => r.json())
+            .then(campaigns => {
+                document.getElementById('campaign-count').textContent =
+                    `${campaigns.length} campaign${campaigns.length !== 1 ? 's' : ''} detected`;
+
+                if (campaigns.length === 0) {
+                    document.getElementById('campaign-feed').innerHTML = `
+                        <div class="text-center py-16 text-gray-400">
+                            <div class="text-3xl mb-2">🔍</div>
+                            No campaigns found for the selected filters.<br>
+                            <span class="text-xs">Try expanding the time range or clearing filters.</span>
+                        </div>`;
+                    return;
+                }
+
+                document.getElementById('campaign-feed').innerHTML = campaigns.map(renderCampaignCard).join('');
+            });
+    }
+
+    function renderCampaignCard(c) {
+        // Severity styles
+        const severityStyles = {
+            critical: { bg: 'bg-red-50', border: 'border-red-300', badge: 'bg-red-600 text-white', label: 'CRITICAL', bar: 'bg-red-500' },
+            high:     { bg: 'bg-orange-50', border: 'border-orange-200', badge: 'bg-orange-500 text-white', label: 'HIGH', bar: 'bg-orange-500' },
+            medium:   { bg: 'bg-yellow-50', border: 'border-yellow-200', badge: 'bg-yellow-500 text-white', label: 'MEDIUM', bar: 'bg-yellow-400' },
+            low:      { bg: 'bg-gray-50', border: 'border-gray-200', badge: 'bg-gray-400 text-white', label: 'LOW', bar: 'bg-gray-300' },
+        };
+        const sev = severityStyles[c.severity] || severityStyles.low;
+
+        // Abuse score badge
+        const scoreColor = c.abuse_score >= 75 ? 'bg-red-100 text-red-700' :
+                           c.abuse_score >= 50 ? 'bg-orange-100 text-orange-700' :
+                           c.abuse_score > 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500';
+
+        // Kill chain timeline
+        const timeline = c.kill_chain.map((phase, i) => {
+            const isLast = i === c.kill_chain.length - 1;
+            return `
+                <div class="flex items-center">
+                    <div class="flex flex-col items-center">
+                        <div class="w-9 h-9 rounded-lg bg-white border-2 ${sev.border} flex items-center justify-center text-lg shadow-sm"
+                             title="${phase.full_name} (${phase.mitre})">${phase.icon}</div>
+                        <span class="text-[9px] font-bold text-gray-500 mt-1">${phase.phase}</span>
+                    </div>
+                    ${!isLast ? '<div class="w-6 h-0.5 ' + sev.bar + ' mx-1 mb-4"></div>' : ''}
+                </div>`;
+        }).join('');
+
+        // Blocked indicator at end of chain
+        const blockedNode = `
+            <div class="flex items-center">
+                <div class="w-6 h-0.5 bg-gray-300 mx-1 mb-4"></div>
+                <div class="flex flex-col items-center">
+                    <div class="w-9 h-9 rounded-lg bg-gray-100 border-2 border-gray-300 flex items-center justify-center text-lg">🛑</div>
+                    <span class="text-[9px] font-bold text-gray-400 mt-1">Logged</span>
+                </div>
+            </div>`;
+
+        // Attack type breakdown pills
+        const typePills = Object.entries(c.type_counts).map(([type, count]) => {
+            const colors = {
+                'Reconnaissance': 'bg-blue-100 text-blue-700',
+                'Directory Enumeration': 'bg-cyan-100 text-cyan-700',
+                'Brute Force': 'bg-orange-100 text-orange-700',
+                'SQL Injection': 'bg-red-100 text-red-700',
+                'Command Injection': 'bg-purple-100 text-purple-700',
+                'XSS': 'bg-pink-100 text-pink-700',
+                'Directory Traversal': 'bg-emerald-100 text-emerald-700',
+                'Malicious Upload': 'bg-amber-100 text-amber-700',
+            };
+            const color = colors[type] || 'bg-gray-100 text-gray-600';
+            return `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${color}">${type}: ${count}</span>`;
+        }).join('');
+
+        const flag = getFlagEmoji(c.country);
+        const countryName = getCountryName(c.country);
+        const firstTime = (c.first_seen || '').replace('T', ' ').substring(0, 19);
+        const lastTime = (c.last_seen || '').replace('T', ' ').substring(0, 19);
+
+        return `
+        <div class="bg-white rounded-xl border-2 ${sev.border} shadow-sm overflow-hidden hover:shadow-md transition-shadow">
+            <!-- Severity bar -->
+            <div class="h-1 ${sev.bar}"></div>
+
+            <div class="p-5">
+                <!-- ── Row 1: Attacker Profile ── -->
+                <div class="flex items-center justify-between mb-4">
+                    <div class="flex items-center gap-4">
+                        <!-- Flag + IP -->
+                        <div class="text-center">
+                            <div class="text-3xl leading-none">${flag}</div>
+                            <span class="text-[9px] text-gray-400">${countryName}</span>
+                        </div>
+                        <div>
+                            <div class="font-mono font-bold text-gray-900 text-lg">${c.ip}</div>
+                            <div class="flex items-center gap-2 mt-0.5">
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold ${scoreColor}">Abuse: ${c.abuse_score}/100</span>
+                                <span class="px-2 py-0.5 rounded text-[10px] font-bold ${sev.badge}">${sev.label}</span>
+                                <span class="text-[10px] text-gray-400">${c.total_attacks} total requests</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="text-right text-[10px] text-gray-400">
+                        <div>First: <span class="font-mono">${firstTime}</span></div>
+                        <div>Last: <span class="font-mono">${lastTime}</span></div>
+                        <div class="font-bold text-gray-600 mt-0.5">Duration: ${c.duration}</div>
+                    </div>
+                </div>
+
+                <!-- ── Row 2: Kill Chain Timeline ── -->
+                <div class="mb-4 p-3 ${sev.bg} rounded-lg">
+                    <div class="text-[10px] font-bold text-gray-500 uppercase mb-2">Attack Progression</div>
+                    <div class="flex items-start flex-wrap gap-y-2">
+                        ${timeline}
+                        ${blockedNode}
+                    </div>
+                </div>
+
+                <!-- ── Row 3: Human Summary ── -->
+                <div class="mb-3 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                    <div class="flex items-start gap-2">
+                        <span class="text-sm mt-0.5">📖</span>
+                        <p class="text-sm text-gray-700 leading-relaxed">${c.summary}</p>
+                    </div>
+                </div>
+
+                <!-- ── Row 4: Attack Type Breakdown ── -->
+                <div class="flex flex-wrap gap-1.5">
+                    ${typePills}
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500">🎯 ${c.target_vendors}</span>
+                </div>
+            </div>
+        </div>`;
+    }
+
+    // ============================================================================
+    // INIT
+    // ============================================================================
+    loadCampaigns();
+    setInterval(loadCampaigns, 10000);
+</script>
+{% endblock %}

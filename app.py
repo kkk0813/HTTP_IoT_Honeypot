@@ -370,6 +370,177 @@ def settings_page():
     return render_template('settings.html', active_page='settings')
 
 # ============================================================================
+# CAMPAIGN INTELLIGENCE (the 'middle layer' between dashboard and attack logs)
+# ============================================================================
+
+@app.route('/campaigns')
+def campaigns_page():
+    return render_template('campaigns.html', active_page='campaigns')
+
+@app.route('/api/campaigns')
+def get_campaigns():
+    """
+    Group attacks by source IP into campaign profiles.
+    Returns attacker profiles with kill chain timelines, severity, and summaries.
+    """
+    period = request.args.get('period', 'all')
+    attack_filter = request.args.get('attack_type', 'all')
+    vendor_filter = request.args.get('vendor', 'all')
+    source_filter = request.args.get('source', 'all')
+
+    conn = sqlite3.connect('attacks.db')
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    # Build WHERE clause
+    conditions = []
+    params = []
+
+    if period == '1h':
+        conditions.append("replace(timestamp, 'T', ' ') > datetime('now', 'localtime', '-1 hour')")
+    elif period == '24h':
+        conditions.append("replace(timestamp, 'T', ' ') > datetime('now', 'localtime', '-1 day')")
+    elif period == '7d':
+        conditions.append("replace(timestamp, 'T', ' ') > datetime('now', 'localtime', '-7 days')")
+
+    if source_filter in ('simulation', 'internet'):
+        conditions.append("source = ?")
+        params.append(source_filter)
+
+    if attack_filter != 'all':
+        conditions.append("attack_type LIKE ?")
+        params.append(f"%{attack_filter}%")
+
+    if vendor_filter != 'all':
+        conditions.append("manufacturer = ?")
+        params.append(vendor_filter)
+
+    where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    # Get all matching attacks grouped by IP
+    cursor.execute(f"""
+        SELECT 
+            source_ip,
+            COUNT(*) as total_attacks,
+            MIN(timestamp) as first_seen,
+            MAX(timestamp) as last_seen,
+            MAX(abuse_score) as max_score,
+            country_code,
+            GROUP_CONCAT(DISTINCT attack_type) as attack_types,
+            GROUP_CONCAT(DISTINCT manufacturer) as target_vendors
+        FROM attacks
+        {where}
+        GROUP BY source_ip
+        ORDER BY total_attacks DESC
+        LIMIT 50
+    """, params)
+
+    campaigns = []
+    for row in cursor.fetchall():
+        ip = row['source_ip']
+        attack_types_raw = (row['attack_types'] or '').split(',')
+
+        # Build kill chain phases in order
+        phase_order = [
+            ('Reconnaissance', 'T1595', '🔍', 'Recon'),
+            ('Directory Enumeration', 'T1083', '📂', 'Enum'),
+            ('Directory Traversal', 'T1083', '📁', 'Traversal'),
+            ('Brute Force', 'T1110', '🔑', 'Brute Force'),
+            ('SQL Injection', 'T1190', '💉', 'SQLi'),
+            ('Command Injection', 'T1059', '⚡', 'CmdI'),
+            ('XSS', 'T1059.007', '🌐', 'XSS'),
+            ('Malicious Upload', 'T1105', '📦', 'Upload'),
+        ]
+
+        kill_chain = []
+        for phase_name, mitre_id, icon, short in phase_order:
+            count = sum(1 for at in attack_types_raw if phase_name in at)
+            if count > 0:
+                kill_chain.append({
+                    'phase': short,
+                    'icon': icon,
+                    'mitre': mitre_id,
+                    'full_name': phase_name,
+                })
+
+        # Get per-type counts for this IP
+        type_counts = {}
+        cursor.execute(f"""
+            SELECT attack_type, COUNT(*) as cnt
+            FROM attacks
+            WHERE source_ip = ?{' AND ' + ' AND '.join(conditions) if conditions else ''}
+            GROUP BY attack_type
+            ORDER BY cnt DESC
+        """, [ip] + params)
+        for tc in cursor.fetchall():
+            short_type = tc['attack_type'].split(' (')[0]
+            type_counts[short_type] = tc['cnt']
+
+        # Calculate campaign severity
+        score = row['max_score'] or 0
+        total = row['total_attacks']
+        has_critical = any(t in str(attack_types_raw) for t in ['SQL Injection', 'Command Injection', 'Malicious Upload', 'XSS'])
+
+        if has_critical or score >= 75:
+            severity = 'critical'
+        elif score >= 50 or total >= 20:
+            severity = 'high'
+        elif total >= 5:
+            severity = 'medium'
+        else:
+            severity = 'low'
+
+        # Calculate duration
+        first = row['first_seen'] or ''
+        last = row['last_seen'] or ''
+        try:
+            from datetime import datetime as dt
+            t1 = dt.strptime(first.replace('T', ' ')[:19], '%Y-%m-%d %H:%M:%S')
+            t2 = dt.strptime(last.replace('T', ' ')[:19], '%Y-%m-%d %H:%M:%S')
+            duration_sec = (t2 - t1).total_seconds()
+            if duration_sec < 60:
+                duration_str = f"{int(duration_sec)}s"
+            elif duration_sec < 3600:
+                duration_str = f"{int(duration_sec // 60)}m {int(duration_sec % 60)}s"
+            else:
+                duration_str = f"{int(duration_sec // 3600)}h {int((duration_sec % 3600) // 60)}m"
+        except:
+            duration_str = "--"
+            duration_sec = 0
+
+        # Generate human-readable summary
+        summary_parts = []
+        for phase_name, count in type_counts.items():
+            if count == 1:
+                summary_parts.append(f"performed 1 {phase_name.lower()} attempt")
+            else:
+                summary_parts.append(f"attempted {count} {phase_name.lower()} attacks")
+
+        vendors = (row['target_vendors'] or 'Generic').replace(',', ', ')
+        summary = f"targeting the {vendors} persona, " + ", then ".join(summary_parts)
+        if duration_sec > 0:
+            summary += f" over {duration_str}"
+        summary = summary[0].upper() + summary[1:] + "."
+
+        campaigns.append({
+            'ip': ip,
+            'country': row['country_code'] or 'Unknown',
+            'abuse_score': score,
+            'total_attacks': total,
+            'first_seen': first,
+            'last_seen': last,
+            'duration': duration_str,
+            'kill_chain': kill_chain,
+            'type_counts': type_counts,
+            'target_vendors': vendors,
+            'severity': severity,
+            'summary': summary,
+        })
+
+    conn.close()
+    return jsonify(campaigns)
+
+# ============================================================================
 # API ENDPOINTS
 # ============================================================================
 @app.route('/api/config', methods=['GET', 'POST'])

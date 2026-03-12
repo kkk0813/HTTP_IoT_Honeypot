@@ -59,8 +59,11 @@ def reset_rate_limits():
 # ============================================================================
 ADMIN_PREFIXES = (
     '/dashboard',
+    '/campaigns',
     '/logs',
     '/simulation',
+    '/forensic',
+    '/scripting',
     '/settings',
     '/mitre',
     '/api/',
