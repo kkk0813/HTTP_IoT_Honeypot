@@ -48,9 +48,20 @@
         <button onclick="setFilter('attack_type','Reconnaissance')" data-filter="attack_type" data-value="Reconnaissance" class="filter-pill px-3 py-1.5 rounded-full text-xs font-bold border transition-colors bg-white text-blue-700 border-gray-200 hover:border-blue-300">🔍 Recon</button>
     </div>
 
-    <!-- Campaign count -->
+    <!-- Session gap control + Campaign count -->
     <div class="mb-4 flex items-center justify-between">
         <p id="campaign-count" class="text-xs text-gray-500 font-bold">Loading campaigns...</p>
+        <div class="flex items-center gap-2">
+            <span class="text-[10px] text-gray-400 font-bold">Session gap:</span>
+            <select id="session-gap" onchange="filters.gap=this.value; loadCampaigns();" class="text-xs border rounded px-2 py-1 bg-white outline-none">
+                <option value="30">30s</option>
+                <option value="60" selected>1 min</option>
+                <option value="180">3 min</option>
+                <option value="300">5 min</option>
+                <option value="600">10 min</option>
+            </select>
+            <span class="text-[10px] text-gray-400" title="Attacks from the same IP are split into separate campaigns when the idle gap exceeds this duration.">ⓘ</span>
+        </div>
     </div>
 
     <!-- ================================================================ -->
@@ -70,7 +81,7 @@
     // ============================================================================
     // STATE
     // ============================================================================
-    let filters = { period: '24h', source: 'all', attack_type: 'all', vendor: 'all' };
+    let filters = { period: '24h', source: 'all', attack_type: 'all', vendor: 'all', gap: '60' };
 
     const regionNames = new Intl.DisplayNames(['en'], { type: 'region' });
     function getFlagEmoji(cc) {
@@ -110,6 +121,7 @@
         if (filters.source !== 'all') params.set('source', filters.source);
         if (filters.attack_type !== 'all') params.set('attack_type', filters.attack_type);
         if (filters.vendor !== 'all') params.set('vendor', filters.vendor);
+        params.set('gap', filters.gap);
 
         fetch('/api/campaigns?' + params.toString())
             .then(r => r.json())
@@ -191,6 +203,21 @@
         const firstTime = (c.first_seen || '').replace('T', ' ').substring(0, 19);
         const lastTime = (c.last_seen || '').replace('T', ' ').substring(0, 19);
 
+        // IP type badge (proxy/VPN detection)
+        const ipTypeStyles = {
+            'Tor Exit Node':  'bg-purple-600 text-white',
+            'Data Center':    'bg-indigo-100 text-indigo-700',
+            'Commercial':     'bg-slate-100 text-slate-700',
+            'Residential':    'bg-green-100 text-green-700',
+            'Education':      'bg-blue-100 text-blue-700',
+            'Private':        'bg-gray-100 text-gray-500',
+            'Unknown':        '',
+        };
+        const ipType = c.ip_type || 'Unknown';
+        const ipTypeBadge = ipType !== 'Unknown'
+            ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold ${ipTypeStyles[ipType] || 'bg-gray-100 text-gray-600'}">${ipType}</span>`
+            : '';
+
         return `
         <div class="bg-white rounded-xl border-2 ${sev.border} shadow-sm overflow-hidden hover:shadow-md transition-shadow">
             <!-- Severity bar -->
@@ -210,6 +237,7 @@
                             <div class="flex items-center gap-2 mt-0.5">
                                 <span class="px-2 py-0.5 rounded text-[10px] font-bold ${scoreColor}">Abuse: ${c.abuse_score}/100</span>
                                 <span class="px-2 py-0.5 rounded text-[10px] font-bold ${sev.badge}">${sev.label}</span>
+                                ${ipTypeBadge}
                                 <span class="text-[10px] text-gray-400">${c.total_attacks} total requests</span>
                             </div>
                         </div>
@@ -238,13 +266,90 @@
                     </div>
                 </div>
 
-                <!-- ── Row 4: Attack Type Breakdown ── -->
-                <div class="flex flex-wrap gap-1.5">
-                    ${typePills}
-                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500">🎯 ${c.target_vendors}</span>
+                <!-- ── Row 4: Attack Type Breakdown + AI Analysis ── -->
+                <div class="flex items-center justify-between">
+                    <div class="flex flex-wrap gap-1.5">
+                        ${typePills}
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-gray-100 text-gray-500">🎯 ${c.target_vendors}</span>
+                    </div>
+                    <button onclick="copyCampaignAIPrompt(this)" data-campaign='${JSON.stringify(c).replace(/'/g, "&#39;")}'
+                            class="flex-shrink-0 ml-3 px-3 py-1.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 text-[10px] font-bold rounded-lg transition-colors flex items-center gap-1">
+                        <span class="ai-btn-icon">🤖</span> <span class="ai-btn-text">AI Analysis</span>
+                    </button>
                 </div>
             </div>
         </div>`;
+    }
+
+    // ============================================================================
+    // AI CAMPAIGN ANALYSIS PROMPT
+    // ============================================================================
+    function copyCampaignAIPrompt(btn) {
+        const campaign = JSON.parse(btn.dataset.campaign);
+        
+        const killChainStr = campaign.kill_chain
+            .map(p => `${p.icon} ${p.full_name} (${p.mitre})`)
+            .join(' → ');
+
+        const typeBreakdown = Object.entries(campaign.type_counts)
+            .map(([type, count]) => `  - ${type}: ${count} attempts`)
+            .join('\n');
+
+        const prompt = `I captured the following attack campaign on my IoT honeypot and need a detailed threat intelligence analysis.
+
+CAMPAIGN PROFILE:
+- Attacker IP: ${campaign.ip}
+- Country: ${getCountryName(campaign.country)}
+- IP Type: ${campaign.ip_type || 'Unknown'}
+- Abuse Score: ${campaign.abuse_score}/100
+- Campaign Severity: ${campaign.severity.toUpperCase()}
+- Total Requests: ${campaign.total_attacks}
+- Duration: ${campaign.duration}
+- First Seen: ${campaign.first_seen}
+- Last Seen: ${campaign.last_seen}
+- Target Personas: ${campaign.target_vendors}
+
+ATTACK PROGRESSION (Kill Chain):
+${killChainStr}
+
+ATTACK TYPE BREAKDOWN:
+${typeBreakdown}
+
+AUTO-GENERATED SUMMARY:
+${campaign.summary}
+
+Please analyze this campaign and provide:
+1. What type of threat actor does this pattern suggest (automated bot, manual attacker, APT)?
+2. Which known IoT botnets or malware families match this attack pattern?
+3. What was the attacker's likely objective at each phase of the kill chain?
+4. What defensive measures would have stopped this campaign at each phase?
+5. How does this campaign compare to real-world IoT attacks (Mirai, Mozi, Hajime)?
+6. What indicators of compromise (IoCs) should be added to detection rules?`;
+
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(prompt).then(() => showCopySuccess(btn));
+        } else {
+            const ta = document.createElement('textarea');
+            ta.value = prompt;
+            ta.style.position = 'fixed';
+            document.body.appendChild(ta);
+            ta.focus();
+            ta.select();
+            try { document.execCommand('copy'); } catch(e) {}
+            document.body.removeChild(ta);
+            showCopySuccess(btn);
+        }
+    }
+
+    function showCopySuccess(btn) {
+        const icon = btn.querySelector('.ai-btn-icon');
+        const text = btn.querySelector('.ai-btn-text');
+        icon.textContent = '✅';
+        text.textContent = 'Copied! Paste into AI';
+        setTimeout(() => {
+            icon.textContent = '🤖';
+            text.textContent = 'AI Analysis';
+        }, 3000);
     }
 
     // ============================================================================

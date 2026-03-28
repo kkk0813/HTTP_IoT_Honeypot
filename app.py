@@ -228,6 +228,11 @@ def init_db():
         cursor.execute("SELECT source FROM attacks LIMIT 1")
     except sqlite3.OperationalError:
         cursor.execute("ALTER TABLE attacks ADD COLUMN source TEXT DEFAULT 'simulation'")
+    # Migration: add 'usage_type' column to ip_intelligence for proxy/VPN detection
+    try:
+        cursor.execute("SELECT usage_type FROM ip_intelligence LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE ip_intelligence ADD COLUMN usage_type TEXT DEFAULT 'Unknown'")
     conn.commit()
     conn.close()
 
@@ -246,7 +251,7 @@ def log_interaction(req):
     Now superseded by internet_routes.py middleware (before_request).
     Kept for backward compatibility — not actively called."""
     ip = req.remote_addr
-    score, country = get_reputation_score(ip)
+    score, country, _ = get_reputation_score(ip)
     payload = req.form.to_dict()
     if req.method == 'POST':
         category = classify_attack(payload)
@@ -257,18 +262,19 @@ def log_interaction(req):
     log_to_db(ip, req.method, req.path, payload, user_agent, score, category, country, current_persona["vendor"], source='internet')
 
 def get_reputation_score(ip):
-    """Get IP reputation from AbuseIPDB (with caching)"""
+    """Get IP reputation from AbuseIPDB (with caching).
+    Returns (abuse_score, country_code, usage_type) tuple."""
     if ip.startswith('192.168.') or ip.startswith('10.') or ip == '127.0.0.1':
-        return 0, 'Local'
+        return 0, 'Local', 'Private'
 
     conn = sqlite3.connect('attacks.db')
     cursor = conn.cursor()
-    cursor.execute("SELECT abuse_score, country_code FROM ip_intelligence WHERE ip_address = ?", (ip,))
+    cursor.execute("SELECT abuse_score, country_code, usage_type FROM ip_intelligence WHERE ip_address = ?", (ip,))
     cached_result = cursor.fetchone()
     
     if cached_result:
         conn.close()
-        return cached_result[0], cached_result[1]
+        return cached_result[0], cached_result[1], cached_result[2] or 'Unknown'
 
     url = 'https://api.abuseipdb.com/api/v2/check'
     headers = {'Accept': 'application/json', 'Key': get_api_key()}
@@ -279,15 +285,22 @@ def get_reputation_score(ip):
         data = response.json()
         score = data['data']['abuseConfidenceScore']
         country = data['data'].get('countryCode', 'Unknown')
+        usage = data['data'].get('usageType', 'Unknown')
+
+        # Detect Tor exit nodes (AbuseIPDB provides this flag)
+        if data['data'].get('isTor', False):
+            usage = 'Tor Exit Node'
         
-        cursor.execute('INSERT INTO ip_intelligence VALUES (?, ?, ?, ?)', 
-                      (ip, score, country, datetime.now().isoformat()))
+        cursor.execute('''
+            INSERT OR REPLACE INTO ip_intelligence (ip_address, abuse_score, country_code, last_updated, usage_type)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (ip, score, country, datetime.now().isoformat(), usage))
         conn.commit()
         conn.close()
-        return score, country
+        return score, country, usage
     except:
         if conn: conn.close()
-        return 0, 'Unknown'
+        return 0, 'Unknown', 'Unknown'
     
 def classify_attack(payload_dict):
     """Simple attack classifier for real honeypot traffic (Internet Mode)"""
@@ -369,30 +382,32 @@ def mitre_page():
 def settings_page():
     return render_template('settings.html', active_page='settings')
 
-# ============================================================================
-# CAMPAIGN INTELLIGENCE (the 'middle layer' between dashboard and attack logs)
-# ============================================================================
-
 @app.route('/campaigns')
 def campaigns_page():
     return render_template('campaigns.html', active_page='campaigns')
 
+@app.route('/cookbook')
+def cookbook_page():
+    return render_template('cookbook.html', active_page='cookbook')
+
+
 @app.route('/api/campaigns')
 def get_campaigns():
     """
-    Group attacks by source IP into campaign profiles.
-    Returns attacker profiles with kill chain timelines, severity, and summaries.
+    Group attacks into campaigns using session windowing.
+    Attacks from the same IP are split into separate sessions when the
+    idle gap between consecutive requests exceeds SESSION_GAP seconds.
     """
     period = request.args.get('period', 'all')
     attack_filter = request.args.get('attack_type', 'all')
     vendor_filter = request.args.get('vendor', 'all')
     source_filter = request.args.get('source', 'all')
+    SESSION_GAP = int(request.args.get('gap', 60))  # Default: 60 seconds
 
     conn = sqlite3.connect('attacks.db')
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    # Build WHERE clause
     conditions = []
     params = []
 
@@ -417,86 +432,101 @@ def get_campaigns():
 
     where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
 
-    # Get all matching attacks grouped by IP
+    # Fetch all attacks ordered by IP then time (for session splitting)
     cursor.execute(f"""
         SELECT 
-            source_ip,
-            COUNT(*) as total_attacks,
-            MIN(timestamp) as first_seen,
-            MAX(timestamp) as last_seen,
-            MAX(abuse_score) as max_score,
-            country_code,
-            GROUP_CONCAT(DISTINCT attack_type) as attack_types,
-            GROUP_CONCAT(DISTINCT manufacturer) as target_vendors
+            attack_id, timestamp, source_ip, http_method, url_path,
+            attack_type, abuse_score, country_code, manufacturer, source,
+            (SELECT usage_type FROM ip_intelligence WHERE ip_address = source_ip) as usage_type
         FROM attacks
         {where}
-        GROUP BY source_ip
-        ORDER BY total_attacks DESC
-        LIMIT 50
+        ORDER BY source_ip, timestamp
     """, params)
 
-    campaigns = []
-    for row in cursor.fetchall():
+    rows = cursor.fetchall()
+    conn.close()
+
+    # ── Session windowing: split by IP + idle gap ──
+    sessions = []
+    current_session = []
+    prev_ip = None
+    prev_time = None
+
+    for row in rows:
         ip = row['source_ip']
-        attack_types_raw = (row['attack_types'] or '').split(',')
+        try:
+            ts = datetime.strptime(row['timestamp'].replace('T', ' ')[:19], '%Y-%m-%d %H:%M:%S')
+        except:
+            ts = datetime.now()
 
-        # Build kill chain phases in order
-        phase_order = [
-            ('Reconnaissance', 'T1595', '🔍', 'Recon'),
-            ('Directory Enumeration', 'T1083', '📂', 'Enum'),
-            ('Directory Traversal', 'T1083', '📁', 'Traversal'),
-            ('Brute Force', 'T1110', '🔑', 'Brute Force'),
-            ('SQL Injection', 'T1190', '💉', 'SQLi'),
-            ('Command Injection', 'T1059', '⚡', 'CmdI'),
-            ('XSS', 'T1059.007', '🌐', 'XSS'),
-            ('Malicious Upload', 'T1105', '📦', 'Upload'),
-        ]
+        # Start a new session if:
+        # - Different IP than previous row
+        # - Same IP but idle gap exceeds threshold
+        if ip != prev_ip or (prev_time and (ts - prev_time).total_seconds() > SESSION_GAP):
+            if current_session:
+                sessions.append(current_session)
+            current_session = []
 
-        kill_chain = []
-        for phase_name, mitre_id, icon, short in phase_order:
-            count = sum(1 for at in attack_types_raw if phase_name in at)
-            if count > 0:
-                kill_chain.append({
-                    'phase': short,
-                    'icon': icon,
-                    'mitre': mitre_id,
-                    'full_name': phase_name,
-                })
+        current_session.append(dict(row))
+        prev_ip = ip
+        prev_time = ts
 
-        # Get per-type counts for this IP
+    if current_session:
+        sessions.append(current_session)
+
+    # ── Build campaign cards from sessions ──
+    PHASE_ORDER = [
+        ('Reconnaissance', 'T1595', '🔍', 'Recon'),
+        ('Directory Enumeration', 'T1083', '📂', 'Enum'),
+        ('Directory Traversal', 'T1083', '📁', 'Traversal'),
+        ('Brute Force', 'T1110', '🔑', 'Brute Force'),
+        ('SQL Injection', 'T1190', '💉', 'SQLi'),
+        ('Command Injection', 'T1059', '⚡', 'CmdI'),
+        ('XSS', 'T1059.007', '🌐', 'XSS'),
+        ('Malicious Upload', 'T1105', '📦', 'Upload'),
+    ]
+
+    campaigns = []
+    for session in sessions:
+        ip = session[0]['source_ip']
+        total = len(session)
+        first = session[0]['timestamp'] or ''
+        last = session[-1]['timestamp'] or ''
+        max_score = max((r['abuse_score'] or 0) for r in session)
+        country = session[0]['country_code'] or 'Unknown'
+        usage = session[0].get('usage_type') or 'Unknown'
+
+        # Attack type counts (in order of appearance within session)
         type_counts = {}
-        cursor.execute(f"""
-            SELECT attack_type, COUNT(*) as cnt
-            FROM attacks
-            WHERE source_ip = ?{' AND ' + ' AND '.join(conditions) if conditions else ''}
-            GROUP BY attack_type
-            ORDER BY cnt DESC
-        """, [ip] + params)
-        for tc in cursor.fetchall():
-            short_type = tc['attack_type'].split(' (')[0]
-            type_counts[short_type] = tc['cnt']
+        attack_types_set = set()
+        vendors_set = set()
+        for r in session:
+            short_type = (r['attack_type'] or 'Unknown').split(' (')[0]
+            type_counts[short_type] = type_counts.get(short_type, 0) + 1
+            attack_types_set.add(r['attack_type'] or '')
+            vendors_set.add(r['manufacturer'] or 'Generic')
 
-        # Calculate campaign severity
-        score = row['max_score'] or 0
-        total = row['total_attacks']
-        has_critical = any(t in str(attack_types_raw) for t in ['SQL Injection', 'Command Injection', 'Malicious Upload', 'XSS'])
+        # Kill chain from attack types present
+        kill_chain = []
+        for phase_name, mitre_id, icon, short in PHASE_ORDER:
+            if any(phase_name in at for at in attack_types_set):
+                kill_chain.append({'phase': short, 'icon': icon, 'mitre': mitre_id, 'full_name': phase_name})
 
-        if has_critical or score >= 75:
+        # Severity
+        has_critical = any(t in str(list(attack_types_set)) for t in ['SQL Injection', 'Command Injection', 'Malicious Upload', 'XSS'])
+        if has_critical or max_score >= 75:
             severity = 'critical'
-        elif score >= 50 or total >= 20:
+        elif max_score >= 50 or total >= 20:
             severity = 'high'
         elif total >= 5:
             severity = 'medium'
         else:
             severity = 'low'
 
-        # Calculate duration
-        first = row['first_seen'] or ''
-        last = row['last_seen'] or ''
+        # Duration
         try:
-            from datetime import datetime as dt
-            t1 = dt.strptime(first.replace('T', ' ')[:19], '%Y-%m-%d %H:%M:%S')
-            t2 = dt.strptime(last.replace('T', ' ')[:19], '%Y-%m-%d %H:%M:%S')
+            t1 = datetime.strptime(first.replace('T', ' ')[:19], '%Y-%m-%d %H:%M:%S')
+            t2 = datetime.strptime(last.replace('T', ' ')[:19], '%Y-%m-%d %H:%M:%S')
             duration_sec = (t2 - t1).total_seconds()
             if duration_sec < 60:
                 duration_str = f"{int(duration_sec)}s"
@@ -508,7 +538,7 @@ def get_campaigns():
             duration_str = "--"
             duration_sec = 0
 
-        # Generate human-readable summary
+        # Summary
         summary_parts = []
         for phase_name, count in type_counts.items():
             if count == 1:
@@ -516,29 +546,41 @@ def get_campaigns():
             else:
                 summary_parts.append(f"attempted {count} {phase_name.lower()} attacks")
 
-        vendors = (row['target_vendors'] or 'Generic').replace(',', ', ')
+        vendors = ', '.join(vendors_set)
         summary = f"targeting the {vendors} persona, " + ", then ".join(summary_parts)
         if duration_sec > 0:
             summary += f" over {duration_str}"
         summary = summary[0].upper() + summary[1:] + "."
 
+        # IP type
+        if 'tor' in usage.lower():
+            ip_type = 'Tor Exit Node'
+        elif 'data center' in usage.lower() or 'hosting' in usage.lower():
+            ip_type = 'Data Center'
+        elif 'commercial' in usage.lower() or 'business' in usage.lower():
+            ip_type = 'Commercial'
+        elif 'isp' in usage.lower() or 'residential' in usage.lower():
+            ip_type = 'Residential'
+        elif 'university' in usage.lower() or 'education' in usage.lower():
+            ip_type = 'Education'
+        elif usage == 'Private':
+            ip_type = 'Private'
+        else:
+            ip_type = usage if usage != 'Unknown' else 'Unknown'
+
         campaigns.append({
-            'ip': ip,
-            'country': row['country_code'] or 'Unknown',
-            'abuse_score': score,
-            'total_attacks': total,
-            'first_seen': first,
-            'last_seen': last,
-            'duration': duration_str,
-            'kill_chain': kill_chain,
-            'type_counts': type_counts,
-            'target_vendors': vendors,
-            'severity': severity,
-            'summary': summary,
+            'ip': ip, 'country': country,
+            'abuse_score': max_score, 'total_attacks': total,
+            'first_seen': first, 'last_seen': last, 'duration': duration_str,
+            'kill_chain': kill_chain, 'type_counts': type_counts,
+            'target_vendors': vendors, 'severity': severity,
+            'summary': summary, 'ip_type': ip_type,
         })
 
-    conn.close()
-    return jsonify(campaigns)
+    # Sort by most recent first
+    campaigns.sort(key=lambda c: c['last_seen'], reverse=True)
+
+    return jsonify(campaigns[:50])
 
 # ============================================================================
 # API ENDPOINTS
@@ -1128,11 +1170,6 @@ init_internet_module(
     send_alert_func=send_alert
 )
 app.register_blueprint(internet_bp)
-
-from forensic import forensic_bp
-app.register_blueprint(forensic_bp)
-from scripting import scripting_bp
-app.register_blueprint(scripting_bp)
 
 # Email notification module (FR-10)
 init_notifier(app_config=honeypot_config, db_path='attacks.db')

@@ -64,6 +64,7 @@ ADMIN_PREFIXES = (
     '/simulation',
     '/forensic',
     '/scripting',
+    '/cookbook',
     '/settings',
     '/mitre',
     '/api/',
@@ -255,7 +256,10 @@ def _log_request(req, rate_limited=False):
     attack_type = _classify_attack(req, payload)
 
     # ── Get IP reputation (with caching) ──
-    score, country = _get_reputation_score(ip)
+    result = _get_reputation_score(ip)
+    # Handle both (score, country) and (score, country, usage_type) returns
+    score = result[0]
+    country = result[1] if len(result) > 1 else 'Unknown'
 
     # ── Write to database ──
     vendor = _current_persona.get('vendor', 'Generic')

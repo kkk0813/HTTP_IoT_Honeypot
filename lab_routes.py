@@ -508,13 +508,14 @@ def get_real_ip_reputation(ip):
             'score': 0,
             'country': 'Local',
             'source': 'Private IP',
+            'usage_type': 'Private',
             'cached': False
         }
     
     # Check cache first
     conn = sqlite3.connect('attacks.db')
     cursor = conn.cursor()
-    cursor.execute("SELECT abuse_score, country_code FROM ip_intelligence WHERE ip_address = ?", (ip,))
+    cursor.execute("SELECT abuse_score, country_code, usage_type FROM ip_intelligence WHERE ip_address = ?", (ip,))
     cached = cursor.fetchone()
     
     if cached:
@@ -522,6 +523,7 @@ def get_real_ip_reputation(ip):
         return {
             'score': cached[0],
             'country': cached[1],
+            'usage_type': cached[2] or 'Unknown',
             'source': 'Cache',
             'cached': True
         }
@@ -540,18 +542,24 @@ def get_real_ip_reputation(ip):
             if 'data' in data:
                 score = data['data']['abuseConfidenceScore']
                 country = data['data'].get('countryCode', 'Unknown')
+                usage = data['data'].get('usageType', 'Unknown')
+
+                # Detect Tor exit nodes
+                if data['data'].get('isTor', False):
+                    usage = 'Tor Exit Node'
                 
                 # Cache the result
                 cursor.execute('''
-                    INSERT OR REPLACE INTO ip_intelligence (ip_address, abuse_score, country_code, last_updated)
-                    VALUES (?, ?, ?, ?)
-                ''', (ip, score, country, datetime.now().isoformat()))
+                    INSERT OR REPLACE INTO ip_intelligence (ip_address, abuse_score, country_code, last_updated, usage_type)
+                    VALUES (?, ?, ?, ?, ?)
+                ''', (ip, score, country, datetime.now().isoformat(), usage))
                 conn.commit()
                 conn.close()
                 
                 return {
                     'score': score,
                     'country': country,
+                    'usage_type': usage,
                     'source': 'AbuseIPDB',
                     'cached': False
                 }
@@ -564,6 +572,7 @@ def get_real_ip_reputation(ip):
     return {
         'score': 0,
         'country': 'Unknown',
+        'usage_type': 'Unknown',
         'source': 'No API Key',
         'cached': False
     }
