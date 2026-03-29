@@ -15,7 +15,7 @@
             <div class="flex gap-3">
                 <div>
                     <label class="text-[10px] font-bold text-gray-400 uppercase block mb-1">Data Source</label>
-                    <select id="filterSource" onchange="fetchLogs()" class="text-sm p-2 border rounded bg-white outline-none w-40 shadow-sm">
+                    <select id="filterSource" onchange="fetchLogs(true)" class="text-sm p-2 border rounded bg-white outline-none w-40 shadow-sm">
                         <option value="all">All Sources</option>
                         <option value="simulation">🎓 Simulation</option>
                         <option value="internet">🌐 Internet</option>
@@ -23,7 +23,7 @@
                 </div>
                 <div>
                     <label class="text-[10px] font-bold text-gray-400 uppercase block mb-1">Time Period</label>
-                    <select id="filterPeriod" onchange="fetchLogs()" class="text-sm p-2 border rounded bg-white outline-none w-40 shadow-sm">
+                    <select id="filterPeriod" onchange="fetchLogs(true)" class="text-sm p-2 border rounded bg-white outline-none w-40 shadow-sm">
                         <option value="all">All Time</option>
                         <option value="1h">Last 1 Hour</option>
                         <option value="24h">Last 24 Hours</option>
@@ -32,7 +32,7 @@
                 </div>
                 <div>
                     <label class="text-[10px] font-bold text-gray-400 uppercase block mb-1">Attack Type</label>
-                    <select id="filterType" onchange="fetchLogs()" class="text-sm p-2 border rounded bg-white outline-none w-40 shadow-sm">
+                    <select id="filterType" onchange="fetchLogs(true)" class="text-sm p-2 border rounded bg-white outline-none w-40 shadow-sm">
                         <option value="all">All Types</option>
                         <option value="Reconnaissance">Reconnaissance</option>
                         <option value="Directory Enumeration">Directory Enumeration</option>
@@ -193,6 +193,28 @@
                 </tr>
             </tbody>
         </table>
+    </div>
+
+    <!-- Pagination Bar -->
+    <div id="pagination-bar" class="hidden flex items-center justify-between bg-white border rounded-xl shadow-sm px-5 py-3 mb-10">
+        <div class="text-xs text-gray-500">
+            Showing <span id="page-range-start" class="font-bold text-gray-700">0</span>–<span id="page-range-end" class="font-bold text-gray-700">0</span> of <span id="page-total" class="font-bold text-gray-700">0</span> logs
+        </div>
+        <div class="flex items-center gap-1">
+            <button onclick="goToPage(1)" id="btn-first" class="px-2 py-1 text-xs rounded border hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed" title="First page">«</button>
+            <button onclick="goToPage(currentPage-1)" id="btn-prev" class="px-2 py-1 text-xs rounded border hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed">Prev</button>
+            <div id="page-numbers" class="flex items-center gap-1 mx-1"></div>
+            <button onclick="goToPage(currentPage+1)" id="btn-next" class="px-2 py-1 text-xs rounded border hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed">Next</button>
+            <button onclick="goToPage(totalPages)" id="btn-last" class="px-2 py-1 text-xs rounded border hover:bg-gray-100 disabled:opacity-40 disabled:cursor-not-allowed" title="Last page">»</button>
+        </div>
+        <div class="flex items-center gap-2">
+            <label class="text-xs text-gray-500">Per page:</label>
+            <select id="perPageSelect" onchange="changePerPage()" class="text-xs p-1 border rounded bg-white outline-none">
+                <option value="25">25</option>
+                <option value="50" selected>50</option>
+                <option value="100">100</option>
+            </select>
+        </div>
     </div>
 </main>
 
@@ -426,6 +448,11 @@
     let allLogs = [];
     let rawLogsWithNoise = [];
     let securityFilterEnabled = false;
+    let currentPage = 1;
+    let totalPages = 1;
+    let totalLogs = 0;
+    let perPage = 50;
+    let searchDebounceTimer = null;
 
     // ============================================================================
     // COLLAPSIBLE TOOLBAR
@@ -920,7 +947,7 @@ Please analyze this attack and provide:
             statsRow.classList.add('hidden');
         }
         
-        fetchLogs();
+        fetchLogs(true);
     }
 
     // ============================================================================
@@ -942,41 +969,47 @@ Please analyze this attack and provide:
         window.location.href = `/api/export/${format}?${params.toString()}`;
     }
 
-    function fetchLogs() {
+    function fetchLogs(resetPage) {
+        if (resetPage) currentPage = 1;
+        
         const period = document.getElementById('filterPeriod').value;
         const type = document.getElementById('filterType').value;
         const source = document.getElementById('filterSource').value;
         const includeNoise = !securityFilterEnabled;
+        const search = document.getElementById('logSearch').value.trim();
         
         const sourceParam = source !== 'all' ? `&source=${source}` : '';
+        const searchParam = search ? `&search=${encodeURIComponent(search)}` : '';
         
-        fetch(`/api/all_logs?period=${period}&type=${type}&include_noise=${includeNoise}${sourceParam}`)
+        fetch(`/api/all_logs?period=${period}&type=${type}&include_noise=${includeNoise}${sourceParam}${searchParam}&page=${currentPage}&per_page=${perPage}`)
             .then(res => res.json())
-            .then(data => {
-                allLogs = data;
+            .then(resp => {
+                allLogs = resp.logs;
+                totalLogs = resp.total;
+                totalPages = Math.max(1, Math.ceil(resp.total / perPage));
+                currentPage = resp.page;
                 
                 if (securityFilterEnabled) {
-                    fetch(`/api/all_logs?period=${period}&type=${type}&include_noise=true${sourceParam}`)
+                    fetch(`/api/all_logs?period=${period}&type=${type}&include_noise=true${sourceParam}${searchParam}&page=1&per_page=1`)
                         .then(res => res.json())
-                        .then(dataWithNoise => {
-                            rawLogsWithNoise = dataWithNoise;
-                            updateStatistics();
-                            filterLogs();
+                        .then(noiseResp => {
+                            updateStatistics(noiseResp.total, resp.total);
+                            renderTable(allLogs);
+                            renderPagination();
                         });
                 } else {
-                    filterLogs();
+                    renderTable(allLogs);
+                    renderPagination();
                 }
             });
     }
 
-    function updateStatistics() {
-        const total = rawLogsWithNoise.length;
-        const noise = rawLogsWithNoise.filter(l => l.score < 50 && !l.type.includes('T1')).length;
-        const malicious = total - noise;
-        const ratio = noise > 0 ? (malicious / noise).toFixed(2) : malicious;
+    function updateStatistics(totalWithNoise, totalFiltered) {
+        const noise = totalWithNoise - totalFiltered;
+        const ratio = noise > 0 ? (totalFiltered / noise).toFixed(2) : totalFiltered;
         
-        document.getElementById('stat-total').textContent = total;
-        document.getElementById('stat-malicious').textContent = malicious;
+        document.getElementById('stat-total').textContent = totalWithNoise;
+        document.getElementById('stat-malicious').textContent = totalFiltered;
         document.getElementById('stat-noise').textContent = noise;
         document.getElementById('stat-ratio').textContent = ratio + ':1';
     }
@@ -1094,13 +1127,87 @@ Please analyze this attack and provide:
     }
 
     function filterLogs() {
-        const query = document.getElementById('logSearch').value.toLowerCase();
-        const filtered = allLogs.filter(l => 
-            l.ip.toLowerCase().includes(query) || 
-            l.type.toLowerCase().includes(query) ||
-            (l.vendor && l.vendor.toLowerCase().includes(query))
-        );
-        renderTable(filtered);
+        // Server-side search with debounce
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => fetchLogs(true), 300);
+    }
+
+    // ============================================================================
+    // PAGINATION CONTROLS
+    // ============================================================================
+    function goToPage(page) {
+        if (page < 1 || page > totalPages || page === currentPage) return;
+        currentPage = page;
+        fetchLogs(false);
+        // Scroll table into view
+        document.getElementById('full-log-table').closest('table').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function changePerPage() {
+        perPage = parseInt(document.getElementById('perPageSelect').value);
+        fetchLogs(true);
+    }
+
+    function renderPagination() {
+        const bar = document.getElementById('pagination-bar');
+        if (totalLogs === 0) {
+            bar.classList.add('hidden');
+            return;
+        }
+        bar.classList.remove('hidden');
+
+        const start = (currentPage - 1) * perPage + 1;
+        const end = Math.min(currentPage * perPage, totalLogs);
+        document.getElementById('page-range-start').textContent = start;
+        document.getElementById('page-range-end').textContent = end;
+        document.getElementById('page-total').textContent = totalLogs;
+
+        // Prev/Next/First/Last buttons
+        document.getElementById('btn-first').disabled = currentPage <= 1;
+        document.getElementById('btn-prev').disabled = currentPage <= 1;
+        document.getElementById('btn-next').disabled = currentPage >= totalPages;
+        document.getElementById('btn-last').disabled = currentPage >= totalPages;
+
+        // Page number buttons (show up to 7 pages with ellipsis)
+        const container = document.getElementById('page-numbers');
+        container.innerHTML = '';
+
+        const maxButtons = 7;
+        let pages = [];
+
+        if (totalPages <= maxButtons) {
+            for (let i = 1; i <= totalPages; i++) pages.push(i);
+        } else {
+            pages.push(1);
+            let rangeStart = Math.max(2, currentPage - 2);
+            let rangeEnd = Math.min(totalPages - 1, currentPage + 2);
+
+            // Adjust range to always show 5 middle buttons
+            if (rangeStart <= 2) rangeEnd = Math.min(totalPages - 1, 6);
+            if (rangeEnd >= totalPages - 1) rangeStart = Math.max(2, totalPages - 5);
+
+            if (rangeStart > 2) pages.push('...');
+            for (let i = rangeStart; i <= rangeEnd; i++) pages.push(i);
+            if (rangeEnd < totalPages - 1) pages.push('...');
+            pages.push(totalPages);
+        }
+
+        pages.forEach(p => {
+            if (p === '...') {
+                const span = document.createElement('span');
+                span.className = 'px-1 text-xs text-gray-400';
+                span.textContent = '…';
+                container.appendChild(span);
+            } else {
+                const btn = document.createElement('button');
+                btn.textContent = p;
+                btn.onclick = () => goToPage(p);
+                btn.className = p === currentPage
+                    ? 'px-2.5 py-1 text-xs rounded border font-bold bg-blue-600 text-white border-blue-600'
+                    : 'px-2.5 py-1 text-xs rounded border hover:bg-gray-100';
+                container.appendChild(btn);
+            }
+        });
     }
 
     // ============================================================================
@@ -1213,9 +1320,9 @@ Please analyze this attack and provide:
     });
 
     // Initial load
-    fetchLogs();
+    fetchLogs(true);
     
-    // Auto-refresh every 10 seconds
-    setInterval(fetchLogs, 10000);
+    // Auto-refresh every 10 seconds (stay on current page)
+    setInterval(() => fetchLogs(false), 10000);
 </script>
 {% endblock %}
