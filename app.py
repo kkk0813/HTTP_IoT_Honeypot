@@ -6,6 +6,8 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import sqlite3, requests, threading, json, os, socket, random, secrets
 from datetime import datetime
 from werkzeug.serving import WSGIRequestHandler
+from forensic import forensic_bp
+from scripting import scripting_bp
 
 app = Flask(__name__)
 
@@ -393,11 +395,16 @@ def cookbook_page():
 
 @app.route('/api/campaigns')
 def get_campaigns():
-    """Group attacks by source IP into campaign profiles with kill chain timelines."""
+    """
+    Group attacks into campaigns using session windowing.
+    Attacks from the same IP are split into separate sessions when the
+    idle gap between consecutive requests exceeds SESSION_GAP seconds.
+    """
     period = request.args.get('period', 'all')
     attack_filter = request.args.get('attack_type', 'all')
     vendor_filter = request.args.get('vendor', 'all')
     source_filter = request.args.get('source', 'all')
+    SESSION_GAP = int(request.args.get('gap', 60))  # Default: 60 seconds
 
     conn = sqlite3.connect('attacks.db')
     conn.row_factory = sqlite3.Row
@@ -427,72 +434,98 @@ def get_campaigns():
 
     where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
 
+    # Fetch all attacks ordered by IP then time (for session splitting)
     cursor.execute(f"""
         SELECT 
-            source_ip,
-            COUNT(*) as total_attacks,
-            MIN(timestamp) as first_seen,
-            MAX(timestamp) as last_seen,
-            MAX(abuse_score) as max_score,
-            country_code,
-            GROUP_CONCAT(DISTINCT attack_type) as attack_types,
-            GROUP_CONCAT(DISTINCT manufacturer) as target_vendors,
+            attack_id, timestamp, source_ip, http_method, url_path,
+            attack_type, abuse_score, country_code, manufacturer, source,
             (SELECT usage_type FROM ip_intelligence WHERE ip_address = source_ip) as usage_type
         FROM attacks
         {where}
-        GROUP BY source_ip
-        ORDER BY total_attacks DESC
-        LIMIT 50
+        ORDER BY source_ip, timestamp
     """, params)
 
-    campaigns = []
-    for row in cursor.fetchall():
+    rows = cursor.fetchall()
+    conn.close()
+
+    # ── Session windowing: split by IP + idle gap ──
+    sessions = []
+    current_session = []
+    prev_ip = None
+    prev_time = None
+
+    for row in rows:
         ip = row['source_ip']
-        attack_types_raw = (row['attack_types'] or '').split(',')
+        try:
+            ts = datetime.strptime(row['timestamp'].replace('T', ' ')[:19], '%Y-%m-%d %H:%M:%S')
+        except:
+            ts = datetime.now()
 
-        phase_order = [
-            ('Reconnaissance', 'T1595', '🔍', 'Recon'),
-            ('Directory Enumeration', 'T1083', '📂', 'Enum'),
-            ('Directory Traversal', 'T1083', '📁', 'Traversal'),
-            ('Brute Force', 'T1110', '🔑', 'Brute Force'),
-            ('SQL Injection', 'T1190', '💉', 'SQLi'),
-            ('Command Injection', 'T1059', '⚡', 'CmdI'),
-            ('XSS', 'T1059.007', '🌐', 'XSS'),
-            ('Malicious Upload', 'T1105', '📦', 'Upload'),
-        ]
+        # Start a new session if:
+        # - Different IP than previous row
+        # - Same IP but idle gap exceeds threshold
+        if ip != prev_ip or (prev_time and (ts - prev_time).total_seconds() > SESSION_GAP):
+            if current_session:
+                sessions.append(current_session)
+            current_session = []
 
+        current_session.append(dict(row))
+        prev_ip = ip
+        prev_time = ts
+
+    if current_session:
+        sessions.append(current_session)
+
+    # ── Build campaign cards from sessions ──
+    PHASE_ORDER = [
+        ('Reconnaissance', 'T1595', '🔍', 'Recon'),
+        ('Directory Enumeration', 'T1083', '📂', 'Enum'),
+        ('Directory Traversal', 'T1083', '📁', 'Traversal'),
+        ('Brute Force', 'T1110', '🔑', 'Brute Force'),
+        ('SQL Injection', 'T1190', '💉', 'SQLi'),
+        ('Command Injection', 'T1059', '⚡', 'CmdI'),
+        ('XSS', 'T1059.007', '🌐', 'XSS'),
+        ('Malicious Upload', 'T1105', '📦', 'Upload'),
+    ]
+
+    campaigns = []
+    for session in sessions:
+        ip = session[0]['source_ip']
+        total = len(session)
+        first = session[0]['timestamp'] or ''
+        last = session[-1]['timestamp'] or ''
+        max_score = max((r['abuse_score'] or 0) for r in session)
+        country = session[0]['country_code'] or 'Unknown'
+        usage = session[0].get('usage_type') or 'Unknown'
+
+        # Attack type counts (in order of appearance within session)
+        type_counts = {}
+        attack_types_set = set()
+        vendors_set = set()
+        for r in session:
+            short_type = (r['attack_type'] or 'Unknown').split(' (')[0]
+            type_counts[short_type] = type_counts.get(short_type, 0) + 1
+            attack_types_set.add(r['attack_type'] or '')
+            vendors_set.add(r['manufacturer'] or 'Generic')
+
+        # Kill chain from attack types present
         kill_chain = []
-        for phase_name, mitre_id, icon, short in phase_order:
-            count = sum(1 for at in attack_types_raw if phase_name in at)
-            if count > 0:
+        for phase_name, mitre_id, icon, short in PHASE_ORDER:
+            if any(phase_name in at for at in attack_types_set):
                 kill_chain.append({'phase': short, 'icon': icon, 'mitre': mitre_id, 'full_name': phase_name})
 
-        type_counts = {}
-        cursor.execute(f"""
-            SELECT attack_type, COUNT(*) as cnt
-            FROM attacks
-            WHERE source_ip = ?{' AND ' + ' AND '.join(conditions) if conditions else ''}
-            GROUP BY attack_type ORDER BY cnt DESC
-        """, [ip] + params)
-        for tc in cursor.fetchall():
-            short_type = tc['attack_type'].split(' (')[0]
-            type_counts[short_type] = tc['cnt']
-
-        score = row['max_score'] or 0
-        total = row['total_attacks']
-        has_critical = any(t in str(attack_types_raw) for t in ['SQL Injection', 'Command Injection', 'Malicious Upload', 'XSS'])
-
-        if has_critical or score >= 75:
+        # Severity
+        has_critical = any(t in str(list(attack_types_set)) for t in ['SQL Injection', 'Command Injection', 'Malicious Upload', 'XSS'])
+        if has_critical or max_score >= 75:
             severity = 'critical'
-        elif score >= 50 or total >= 20:
+        elif max_score >= 50 or total >= 20:
             severity = 'high'
         elif total >= 5:
             severity = 'medium'
         else:
             severity = 'low'
 
-        first = row['first_seen'] or ''
-        last = row['last_seen'] or ''
+        # Duration
         try:
             t1 = datetime.strptime(first.replace('T', ' ')[:19], '%Y-%m-%d %H:%M:%S')
             t2 = datetime.strptime(last.replace('T', ' ')[:19], '%Y-%m-%d %H:%M:%S')
@@ -507,6 +540,7 @@ def get_campaigns():
             duration_str = "--"
             duration_sec = 0
 
+        # Summary
         summary_parts = []
         for phase_name, count in type_counts.items():
             if count == 1:
@@ -514,14 +548,13 @@ def get_campaigns():
             else:
                 summary_parts.append(f"attempted {count} {phase_name.lower()} attacks")
 
-        vendors = (row['target_vendors'] or 'Generic').replace(',', ', ')
+        vendors = ', '.join(vendors_set)
         summary = f"targeting the {vendors} persona, " + ", then ".join(summary_parts)
         if duration_sec > 0:
             summary += f" over {duration_str}"
         summary = summary[0].upper() + summary[1:] + "."
 
-        # Classify IP type for badge display
-        usage = row['usage_type'] or 'Unknown'
+        # IP type
         if 'tor' in usage.lower():
             ip_type = 'Tor Exit Node'
         elif 'data center' in usage.lower() or 'hosting' in usage.lower():
@@ -538,16 +571,18 @@ def get_campaigns():
             ip_type = usage if usage != 'Unknown' else 'Unknown'
 
         campaigns.append({
-            'ip': ip, 'country': row['country_code'] or 'Unknown',
-            'abuse_score': score, 'total_attacks': total,
+            'ip': ip, 'country': country,
+            'abuse_score': max_score, 'total_attacks': total,
             'first_seen': first, 'last_seen': last, 'duration': duration_str,
             'kill_chain': kill_chain, 'type_counts': type_counts,
             'target_vendors': vendors, 'severity': severity,
             'summary': summary, 'ip_type': ip_type,
         })
 
-    conn.close()
-    return jsonify(campaigns)
+    # Sort by most recent first
+    campaigns.sort(key=lambda c: c['last_seen'], reverse=True)
+
+    return jsonify(campaigns[:50])
 
 # ============================================================================
 # API ENDPOINTS
@@ -877,80 +912,69 @@ def clear_db():
 
 @app.route('/api/all_logs')
 def get_all_logs():
-    """Get paginated attack logs with server-side search and filtering."""
+    """Get all attack logs with full details for modal display."""
     period = request.args.get('period', 'all')
     attack_type = request.args.get('type', 'all')
     vendor = request.args.get('vendor', 'all')
     include_noise = request.args.get('include_noise', 'true') == 'true'
     source_filter = request.args.get('source', 'all')
-    search_query = request.args.get('search', '').strip()
-    page = max(1, int(request.args.get('page', 1)))
-    per_page = min(200, max(10, int(request.args.get('per_page', 50))))
 
     conn = sqlite3.connect('attacks.db')
     cursor = conn.cursor()
     
-    where_clauses = ["1=1"]
+    query = """
+        SELECT 
+            attack_id,
+            timestamp, 
+            source_ip, 
+            http_method,
+            url_path,
+            payload,
+            user_agent,
+            abuse_score, 
+            attack_type, 
+            country_code, 
+            manufacturer,
+            source
+        FROM attacks 
+        WHERE 1=1
+    """
     params = []
 
     # Filter by data source (simulation vs internet)
     if source_filter in ('simulation', 'internet'):
-        where_clauses.append("source = ?")
+        query += " AND source = ?"
         params.append(source_filter)
 
     # Filter out background noise if requested
     if not include_noise:
-        where_clauses.append("(abuse_score >= 50 OR attack_type LIKE '%T1%')")
+        query += " AND (abuse_score >= 50 OR attack_type LIKE '%T1%')"
 
     if period == '1h':
-        where_clauses.append("replace(timestamp, 'T', ' ') > datetime('now', 'localtime', '-1 hour')")
+        query += " AND replace(timestamp, 'T', ' ') > datetime('now', 'localtime', '-1 hour')"
     elif period == '24h':
-        where_clauses.append("replace(timestamp, 'T', ' ') > datetime('now', 'localtime', '-1 day')")
+        query += " AND replace(timestamp, 'T', ' ') > datetime('now', 'localtime', '-1 day')"
     elif period == '7d':
-        where_clauses.append("replace(timestamp, 'T', ' ') > datetime('now', 'localtime', '-7 days')")
+        query += " AND replace(timestamp, 'T', ' ') > datetime('now', 'localtime', '-7 days')"
 
     if attack_type != 'all':
-        where_clauses.append("attack_type LIKE ?")
+        query += " AND attack_type LIKE ?"
         params.append(f"%{attack_type}%")
 
     if vendor != 'all':
-        where_clauses.append("manufacturer = ?")
+        query += " AND manufacturer = ?"
         params.append(vendor)
 
-    # Server-side search across IP, attack type, and vendor
-    if search_query:
-        where_clauses.append("(source_ip LIKE ? OR attack_type LIKE ? OR manufacturer LIKE ?)")
-        search_pattern = f"%{search_query}%"
-        params.extend([search_pattern, search_pattern, search_pattern])
-
-    where_sql = " AND ".join(where_clauses)
-
-    # Count total matching rows (for pagination metadata)
-    cursor.execute(f"SELECT COUNT(*) FROM attacks WHERE {where_sql}", params)
-    total = cursor.fetchone()[0]
-
-    # Fetch only the requested page
-    offset = (page - 1) * per_page
-    data_query = f"""
-        SELECT attack_id, timestamp, source_ip, http_method, url_path,
-               payload, user_agent, abuse_score, attack_type,
-               country_code, manufacturer, source
-        FROM attacks WHERE {where_sql}
-        ORDER BY timestamp DESC
-        LIMIT ? OFFSET ?
-    """
-    cursor.execute(data_query, params + [per_page, offset])
+    query += " ORDER BY timestamp DESC"
     
+    cursor.execute(query, params)
+    
+    # Map all fields to dictionary
     columns = ['id', 'time', 'ip', 'method', 'path', 'payload', 'agent', 'score', 'type', 'country', 'vendor', 'source']
     logs = [dict(zip(columns, row)) for row in cursor.fetchall()]
     
     conn.close()
-    return jsonify({
-        "logs": logs,
-        "total": total,
-        "page": page,
-        "per_page": per_page
-    })
+    return jsonify(logs)
 
 
 # ============================================================================
@@ -1148,6 +1172,8 @@ init_internet_module(
     send_alert_func=send_alert
 )
 app.register_blueprint(internet_bp)
+app.register_blueprint(forensic_bp)
+app.register_blueprint(scripting_bp)
 
 # Email notification module (FR-10)
 init_notifier(app_config=honeypot_config, db_path='attacks.db')
