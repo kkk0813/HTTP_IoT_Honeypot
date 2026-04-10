@@ -912,70 +912,96 @@ def clear_db():
 
 @app.route('/api/all_logs')
 def get_all_logs():
-    """Get all attack logs with full details for modal display."""
+    """Get attack logs with server-side pagination, search, and filtering."""
     period = request.args.get('period', 'all')
     attack_type = request.args.get('type', 'all')
-    vendor = request.args.get('vendor', 'all')
     include_noise = request.args.get('include_noise', 'true') == 'true'
     source_filter = request.args.get('source', 'all')
-
+    search = request.args.get('search', '').strip()
+    
+    # Pagination params (safe defaults if invalid/missing)
+    page = request.args.get('page', 1, type=int) or 1
+    per_page = request.args.get('per_page', 50, type=int) or 50
+    page = max(1, page)
+    per_page = max(1, min(per_page, 200))
+ 
     conn = sqlite3.connect('attacks.db')
     cursor = conn.cursor()
     
-    query = """
-        SELECT 
-            attack_id,
-            timestamp, 
-            source_ip, 
-            http_method,
-            url_path,
-            payload,
-            user_agent,
-            abuse_score, 
-            attack_type, 
-            country_code, 
-            manufacturer,
-            source
-        FROM attacks 
-        WHERE 1=1
-    """
+    conditions = []
     params = []
-
-    # Filter by data source (simulation vs internet)
+ 
+    # Filter by data source
     if source_filter in ('simulation', 'internet'):
-        query += " AND source = ?"
+        conditions.append("source = ?")
         params.append(source_filter)
-
-    # Filter out background noise if requested
-    if not include_noise:
-        query += " AND (abuse_score >= 50 OR attack_type LIKE '%T1%')"
-
+ 
+    # Filter by time period
     if period == '1h':
-        query += " AND replace(timestamp, 'T', ' ') > datetime('now', 'localtime', '-1 hour')"
+        conditions.append("replace(timestamp, 'T', ' ') > datetime('now', 'localtime', '-1 hour')")
     elif period == '24h':
-        query += " AND replace(timestamp, 'T', ' ') > datetime('now', 'localtime', '-1 day')"
+        conditions.append("replace(timestamp, 'T', ' ') > datetime('now', 'localtime', '-1 day')")
     elif period == '7d':
-        query += " AND replace(timestamp, 'T', ' ') > datetime('now', 'localtime', '-7 days')"
-
+        conditions.append("replace(timestamp, 'T', ' ') > datetime('now', 'localtime', '-7 days')")
+ 
+    # Filter by attack type
     if attack_type != 'all':
-        query += " AND attack_type LIKE ?"
+        conditions.append("attack_type LIKE ?")
         params.append(f"%{attack_type}%")
-
-    if vendor != 'all':
-        query += " AND manufacturer = ?"
-        params.append(vendor)
-
-    query += " ORDER BY timestamp DESC"
-    
-    cursor.execute(query, params)
-    
-    # Map all fields to dictionary
-    columns = ['id', 'time', 'ip', 'method', 'path', 'payload', 'agent', 'score', 'type', 'country', 'vendor', 'source']
-    logs = [dict(zip(columns, row)) for row in cursor.fetchall()]
-    
+ 
+    # Security filter: exclude noise (low-score non-attack traffic)
+    if not include_noise:
+        conditions.append("(abuse_score >= 50 OR attack_type LIKE '%T1%')")
+ 
+    # Search by IP
+    if search:
+        conditions.append("source_ip LIKE ?")
+        params.append(f"%{search}%")
+ 
+    where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+ 
+    # Get total count (before pagination)
+    cursor.execute(f"SELECT COUNT(*) FROM attacks{where}", params)
+    total = cursor.fetchone()[0]
+ 
+    # Fetch paginated results
+    offset = (page - 1) * per_page
+    cursor.execute(f"""
+        SELECT 
+            attack_id, timestamp, source_ip, http_method, url_path,
+            payload, user_agent, abuse_score, attack_type, 
+            country_code, manufacturer, source
+        FROM attacks
+        {where}
+        ORDER BY timestamp DESC
+        LIMIT ? OFFSET ?
+    """, params + [per_page, offset])
+ 
+    logs = []
+    for row in cursor.fetchall():
+        logs.append({
+            'id': row[0],
+            'time': row[1],
+            'ip': row[2],
+            'method': row[3],
+            'path': row[4],
+            'payload': row[5],
+            'agent': row[6],
+            'score': row[7],
+            'type': row[8],
+            'country': row[9] or 'Unknown',
+            'vendor': row[10] or 'Generic',
+            'source': row[11] or 'simulation'
+        })
+ 
     conn.close()
-    return jsonify(logs)
-
+ 
+    return jsonify({
+        'logs': logs,
+        'total': total,
+        'page': page,
+        'per_page': per_page
+    })
 
 # ============================================================================
 # EXPORT ENDPOINTS (FR-9 + NFR-S2: IP Anonymization on Export)
